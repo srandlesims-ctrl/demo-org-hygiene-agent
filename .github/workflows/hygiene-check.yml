@@ -1,0 +1,45 @@
+# Demo Org Hygiene Agent - scheduled run every 3 days
+# Use this file when your GitHub repo is the demo-org-hygiene-agent folder only.
+# For scheduled runs you must add secret SF_AUTH_URL (see README).
+
+name: Demo Org Hygiene Check
+
+on:
+  schedule:
+    - cron: '0 6 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli
+          sf version
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Auth Salesforce org
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          if [ -n "$SF_AUTH_URL" ]; then
+            echo "$SF_AUTH_URL" | sf org login sfdx-url --alias sdo-amer --set-default
+          else
+            echo "SF_AUTH_URL not set; skipping auth (check will report Auth failed for orgs)"
+          fi
+
+      - name: Run hygiene check
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: npm run check
+        continue-on-error: true

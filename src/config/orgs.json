@@ -1,0 +1,6 @@
+{
+  "orgs": [
+    { "alias": "sdo-amer", "region": "AMER", "description": "Americas demo org for events" }
+  ],
+  "_comment": "Add sdo-emea, sdo-apac (and run sf alias set / sf org login) when those orgs are ready."
+}

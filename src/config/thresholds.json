@@ -1,0 +1,15 @@
+{
+  "opportunities": {
+    "minCurrentMonth": 8,
+    "description": "Minimum number of Opportunities with Close Date in current month"
+  },
+  "events": {
+    "minUpcomingDays": 14,
+    "minCount": 5,
+    "description": "Minimum number of Events in the next N days"
+  },
+  "staleDays": {
+    "maxLastModifiedDays": 30,
+    "description": "Key objects should have been modified within this many days"
+  }
+}

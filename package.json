@@ -1,0 +1,22 @@
+{
+  "name": "demo-org-hygiene-agent",
+  "version": "1.0.0",
+  "description": "Lightweight agent that monitors and maintains Salesforce demo org (SDO) environments for AMER, EMEA, and APAC events.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node src/index.js --no-remediate",
+    "remediate": "node src/index.js --remediate",
+    "test": "node --test src/**/*.test.js"
+  },
+  "keywords": ["salesforce", "sdo", "demo", "hygiene", "automation"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
