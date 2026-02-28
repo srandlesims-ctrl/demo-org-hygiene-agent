@@ -33,7 +33,7 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           if [ -n "$SF_AUTH_URL" ]; then
-            echo "$SF_AUTH_URL" | sf org login sfdx-url --alias sdo-amer --set-default
+            echo "$SF_AUTH_URL" | sf org login sfdx-url --alias sdo-amer --set-default --sfdx-url-stdin
           else
             echo "SF_AUTH_URL not set; skipping auth (check will report Auth failed for orgs)"
           fi
