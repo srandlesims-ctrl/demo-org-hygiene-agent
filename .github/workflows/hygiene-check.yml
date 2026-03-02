@@ -32,13 +32,12 @@ jobs:
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          if [ -n "$SF_AUTH_URL" ]; then
-            echo "$SF_AUTH_URL" > /tmp/sf-auth-url.txt
-            sf org login sfdx-url --alias sdo-amer --set-default --sfdx-url-file /tmp/sf-auth-url.txt
-            rm -f /tmp/sf-auth-url.txt
-          else
+          if [ -z "$SF_AUTH_URL" ]; then
             echo "SF_AUTH_URL not set; skipping auth (check will report Auth failed for orgs)"
+            exit 0
           fi
+          # --sfdx-url-stdin must be the last flag (CLI reads URL from stdin after it)
+          echo "$SF_AUTH_URL" | sf org login sfdx-url --alias sdo-amer --set-default --sfdx-url-stdin
 
       - name: Run hygiene check
         env:
