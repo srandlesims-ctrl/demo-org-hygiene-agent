@@ -6,8 +6,8 @@
 Integer minTotal = 8;
 Integer minOmega = 2;
 String omegaPattern = '%Omega%';
-String reopenStageOmega = 'Negotiation/Review';
-String reopenStageOther = 'Qualification';
+String reopenStageOmega = 'Negotiation';
+String reopenStageOther = 'Discovery';
 
 Date firstDayMonth = Date.today().toStartOfMonth();
 Date lastDayMonth = firstDayMonth.addMonths(1).addDays(-1);

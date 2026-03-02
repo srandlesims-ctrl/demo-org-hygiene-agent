@@ -3,8 +3,8 @@
     "minCurrentMonth": 8,
     "minOmega": 2,
     "omegaAccountPattern": "%Omega%",
-    "reopenStageOmega": "Negotiation/Review",
-    "reopenStageOther": "Qualification",
+    "reopenStageOmega": "Negotiation",
+    "reopenStageOther": "Discovery",
     "description": "Min open opps in current month; min Omega opps; stages for reopened"
   },
   "events": {
