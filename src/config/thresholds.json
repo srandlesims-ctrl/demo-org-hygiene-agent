@@ -1,12 +1,22 @@
 {
   "opportunities": {
     "minCurrentMonth": 8,
-    "description": "Minimum number of Opportunities with Close Date in current month"
+    "minOmega": 2,
+    "omegaAccountPattern": "%Omega%",
+    "reopenStageOmega": "Negotiation/Review",
+    "reopenStageOther": "Qualification",
+    "description": "Min open opps in current month; min Omega opps; stages for reopened"
   },
   "events": {
     "minUpcomingDays": 14,
     "minCount": 5,
     "description": "Minimum number of Events in the next N days"
+  },
+  "activity": {
+    "minRecentDays": 30,
+    "targetTasksPerOpp": 3,
+    "omegaOnly": true,
+    "description": "Open Omega opps should have activity in last N days"
   },
   "staleDays": {
     "maxLastModifiedDays": 30,

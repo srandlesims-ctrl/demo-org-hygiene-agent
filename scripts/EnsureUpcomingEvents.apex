@@ -20,11 +20,19 @@ if (existing.size() >= need) {
 }
 
 Id userId = UserInfo.getUserId();
+List<String> subjects = new List<String>{
+    'Pipeline Review - Omega, Inc',
+    'Discovery Call - Acme Corp',
+    'QBR Prep - Internal',
+    'Demo Follow-up - Omega, Inc',
+    'Forecast Meeting - Sales Team'
+};
 List<Event> toInsert = new List<Event>();
 for (Integer i = 0; i < need - existing.size(); i++) {
     DateTime startDt = startRange.addDays(i).addHours(i);
+    String subj = i < subjects.size() ? subjects[i] : ('Demo Event ' + startDt.format('yyyy-MM-dd'));
     toInsert.add(new Event(
-        Subject = 'Demo Event ' + startDt.format('yyyy-MM-dd'),
+        Subject = subj,
         StartDateTime = startDt,
         EndDateTime = startDt.addHours(1),
         OwnerId = userId

@@ -17,8 +17,10 @@ export function formatOrgConsole(evalResult, region = '') {
     out += `\n  - ${evalResult.failures.join('\n  - ')}`;
   }
   if (evalResult.details) {
-    out += `\n  Opportunities (current month): ${evalResult.details.opportunitiesCurrentMonth ?? 'N/A'}`;
+    out += `\n  Pipeline (current month): ${evalResult.details.opportunitiesCurrentMonth ?? 'N/A'}`;
+    out += `\n  Omega opps: ${evalResult.details.opportunitiesOmegaCurrentMonth ?? 'N/A'}`;
     out += `\n  Events (upcoming): ${evalResult.details.eventsUpcoming ?? 'N/A'}`;
+    out += `\n  Activity (Omega): ${evalResult.details.activityOmegaOk === true ? 'pass' : evalResult.details.activityOmegaOk === false ? 'fail' : 'N/A'}`;
   }
   return out;
 }
@@ -76,7 +78,7 @@ export function reportSlack(results, webhookUrl, orgConfig) {
     if (!r.pass && r.failures.length) {
       text += r.failures.map((f) => `  • ${f}`).join('\n');
     } else {
-      text += `  Opportunities (current month): ${r.details?.opportunitiesCurrentMonth ?? 'N/A'}, Events (upcoming): ${r.details?.eventsUpcoming ?? 'N/A'}`;
+      text += `  Pipeline: ${r.details?.opportunitiesCurrentMonth ?? 'N/A'} | Omega: ${r.details?.opportunitiesOmegaCurrentMonth ?? 'N/A'} | Events: ${r.details?.eventsUpcoming ?? 'N/A'} | Activity: ${r.details?.activityOmegaOk === true ? 'pass' : r.details?.activityOmegaOk === false ? 'fail' : 'N/A'}`;
     }
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text } });
   });

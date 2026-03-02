@@ -1,32 +1,112 @@
-// Creates sample Opportunities with Close Date in the current month if needed.
+// Demo Org Hygiene Agent — Opportunity Remediation
+// Moves existing opportunities into current month. Prioritizes Omega account.
+// Does NOT create new records.
 // Run via: sf apex run --file scripts/EnsureCurrentMonthOpportunities.apex --target-org <alias>
 
-Date today = Date.today();
-Integer need = 8;
-List<Opportunity> existing = [
-    SELECT Id
-    FROM Opportunity
-    WHERE CloseDate >= :today.toStartOfMonth()
-    AND CloseDate <= :today.addMonths(1).toStartOfMonth().addDays(-1)
-    AND IsClosed = false
-    LIMIT 20
+Integer minTotal = 8;
+Integer minOmega = 2;
+String omegaPattern = '%Omega%';
+String reopenStageOmega = 'Negotiation/Review';
+String reopenStageOther = 'Qualification';
+
+Date firstDayMonth = Date.today().toStartOfMonth();
+Date lastDayMonth = firstDayMonth.addMonths(1).addDays(-1);
+Integer maxDayOffset = firstDayMonth.daysBetween(lastDayMonth);
+
+// --- Count current state ---
+List<Opportunity> currentOpps = [
+    SELECT Id, Name, Account.Name FROM Opportunity
+    WHERE CloseDate >= :firstDayMonth AND CloseDate <= :lastDayMonth AND IsClosed = false
 ];
-if (existing.size() >= need) {
-    System.debug('Already have ' + existing.size() + ' open opportunities this month.');
-    return;
+Integer currentTotal = currentOpps.size();
+
+Integer currentOmega = 0;
+for (Opportunity o : currentOpps) {
+    if (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) {
+        currentOmega++;
+    }
 }
 
-Id userId = UserInfo.getUserId();
-List<Opportunity> toInsert = new List<Opportunity>();
-Date closeDate = today.toStartOfMonth().addDays(14);
-for (Integer i = 0; i < need - existing.size(); i++) {
-    toInsert.add(new Opportunity(
-        Name = 'Demo Opp ' + closeDate.format() + ' - ' + i,
-        StageName = 'Prospecting',
-        CloseDate = closeDate.addDays(i * 2),
-        Amount = 25000 + (i * 5000),
-        OwnerId = userId
-    ));
+System.debug('Current month open opps: ' + currentTotal + ' (Omega: ' + currentOmega + ')');
+
+if (currentTotal >= minTotal && currentOmega >= minOmega) {
+    System.debug('PASS — Thresholds met. No remediation needed.');
+} else {
+    Set<Id> seen = new Set<Id>();
+    for (Opportunity o : currentOpps) seen.add(o.Id);
+
+    List<Opportunity> toUpdate = new List<Opportunity>();
+    Integer dayOffset = 0;
+    List<Id> excludeIds = new List<Id>(seen);
+
+    // STEP 1: Reactivate closed Omega opps
+    if (currentOmega < minOmega) {
+        List<Opportunity> closedOmega = [
+            SELECT Id, Name, StageName, CloseDate, Amount FROM Opportunity
+            WHERE Account.Name LIKE :omegaPattern AND IsClosed = true
+            AND Id NOT IN :excludeIds
+            ORDER BY CloseDate DESC LIMIT 5
+        ];
+        for (Opportunity o : closedOmega) {
+            if (currentOmega >= minOmega && currentTotal >= minTotal) break;
+            o.StageName = reopenStageOmega;
+            o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+            dayOffset += 4;
+            toUpdate.add(o);
+            seen.add(o.Id);
+            currentOmega++;
+            currentTotal++;
+        }
+    }
+
+    // STEP 2: Move stale open opps into current month
+    if (currentTotal < minTotal) {
+        excludeIds = new List<Id>(seen);
+        List<Opportunity> staleOpen = [
+            SELECT Id, Name, StageName, CloseDate FROM Opportunity
+            WHERE IsClosed = false AND CloseDate < :firstDayMonth
+            AND Id NOT IN :excludeIds
+            ORDER BY CloseDate DESC LIMIT 10
+        ];
+        for (Opportunity o : staleOpen) {
+            if (currentTotal >= minTotal) break;
+            o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+            dayOffset += 3;
+            toUpdate.add(o);
+            seen.add(o.Id);
+            currentTotal++;
+        }
+    }
+
+    // STEP 3: Reopen closed non-Omega opps from recent quarters
+    if (currentTotal < minTotal) {
+        excludeIds = new List<Id>(seen);
+        Date cutoff = Date.today().addDays(-120);
+        List<Opportunity> closedOther = [
+            SELECT Id, Name, StageName, CloseDate FROM Opportunity
+            WHERE IsClosed = true AND CloseDate >= :cutoff AND CloseDate < :firstDayMonth
+            AND (Account.Name = null OR Account.Name NOT LIKE :omegaPattern)
+            AND Id NOT IN :excludeIds
+            ORDER BY CloseDate DESC LIMIT 10
+        ];
+        for (Opportunity o : closedOther) {
+            if (currentTotal >= minTotal) break;
+            o.StageName = reopenStageOther;
+            o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+            dayOffset += 3;
+            toUpdate.add(o);
+            seen.add(o.Id);
+            currentTotal++;
+        }
+    }
+
+    if (!toUpdate.isEmpty()) {
+        update toUpdate;
+        System.debug('REMEDIATED — Updated ' + toUpdate.size() + ' opportunities.');
+        for (Opportunity o : toUpdate) {
+            System.debug('  > ' + o.Name + ' | Stage: ' + o.StageName + ' | CloseDate: ' + o.CloseDate);
+        }
+    } else {
+        System.debug('WARNING — Below threshold but no candidates found to move.');
+    }
 }
-insert toInsert;
-System.debug('Created ' + toInsert.size() + ' opportunities for current month.');

@@ -4,7 +4,7 @@
  */
 
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -32,26 +32,32 @@ export function runApexScript(orgAlias, scriptPath) {
 }
 
 /**
- * Remediate an org: ensure current-month opportunities and upcoming events.
- * Uses inline Apex executed via sf apex run (single statement).
+ * Remediate an org: opportunities (Omega-first move), events, and activity on Omega opps.
  * @param {string} orgAlias
  * @param {Object} evalResult - From evaluator.evaluate (has details about what's missing)
- * @returns {{ opportunitiesCreated?: number, eventsCreated?: number, errors: string[] }}
+ * @returns {{ opportunitiesCreated?: number, eventsCreated?: number, activityCreated?: number, errors: string[] }}
  */
 export async function remediate(orgAlias, evalResult) {
   const errors = [];
   let opportunitiesCreated = 0;
   let eventsCreated = 0;
+  let activityCreated = 0;
 
-  // If opportunities are below threshold, run remediation script
   const scriptDir = join(__dirname, '..', '..', 'scripts');
   const oppScript = join(scriptDir, 'EnsureCurrentMonthOpportunities.apex');
   const eventScript = join(scriptDir, 'EnsureUpcomingEvents.apex');
+  const activityScript = join(scriptDir, 'EnsureOppActivity.apex');
+
+  const minOpps = evalResult._thresholds?.opportunities?.minCurrentMonth ?? 3;
+  const minOmega = evalResult._thresholds?.opportunities?.minOmega ?? 2;
+  const needOppRemediation =
+    (evalResult.details?.opportunitiesCurrentMonth != null && evalResult.details.opportunitiesCurrentMonth < minOpps) ||
+    (evalResult.details?.opportunitiesOmegaCurrentMonth != null && evalResult.details.opportunitiesOmegaCurrentMonth < minOmega);
 
   try {
-    if (evalResult.details?.opportunitiesCurrentMonth !== null && evalResult.details.opportunitiesCurrentMonth < (evalResult._thresholds?.opportunities?.minCurrentMonth ?? 3)) {
+    if (needOppRemediation) {
       const res = runApexScript(orgAlias, oppScript);
-      if (res.ok) opportunitiesCreated = 1; // script creates a batch
+      if (res.ok) opportunitiesCreated = 1;
       else errors.push(`Opportunities: ${res.error}`);
     }
   } catch (e) {
@@ -59,7 +65,7 @@ export async function remediate(orgAlias, evalResult) {
   }
 
   try {
-    if (evalResult.details?.eventsUpcoming !== null && evalResult.details.eventsUpcoming < (evalResult._thresholds?.events?.minCount ?? 5)) {
+    if (evalResult.details?.eventsUpcoming != null && evalResult.details.eventsUpcoming < (evalResult._thresholds?.events?.minCount ?? 5)) {
       const res = runApexScript(orgAlias, eventScript);
       if (res.ok) eventsCreated = 1;
       else errors.push(`Events: ${res.error}`);
@@ -68,5 +74,15 @@ export async function remediate(orgAlias, evalResult) {
     errors.push(`Events remediation: ${e.message}`);
   }
 
-  return { opportunitiesCreated, eventsCreated, errors };
+  try {
+    if (evalResult.details?.activityOmegaOk === false && existsSync(activityScript)) {
+      const res = runApexScript(orgAlias, activityScript);
+      if (res.ok) activityCreated = 1;
+      else errors.push(`Activity: ${res.error}`);
+    }
+  } catch (e) {
+    errors.push(`Activity remediation: ${e.message}`);
+  }
+
+  return { opportunitiesCreated, eventsCreated, activityCreated, errors };
 }

@@ -58,10 +58,14 @@ function getCurrentMonthBounds() {
  */
 export async function runHygieneChecks(orgAlias, thresholds) {
   const month = getCurrentMonthBounds();
+  const omegaPattern = (thresholds?.opportunities?.omegaAccountPattern ?? '%Omega%').replace(/'/g, "''");
   const results = {
     orgAlias,
     opportunitiesCurrentMonth: null,
+    opportunitiesOmegaCurrentMonth: null,
+    omegaFlagshipOpen: null,
     eventsUpcoming: null,
+    activityOmegaOk: null,
     errors: [],
   };
 
@@ -76,6 +80,26 @@ export async function runHygieneChecks(orgAlias, thresholds) {
     results.opportunitiesCurrentMonth = Number(count);
   }
 
+  // Omega opportunities (open, current month) — agent FAILS if below threshold even if total passes
+  const omegaQuery = `SELECT COUNT() FROM Opportunity WHERE Account.Name LIKE '${omegaPattern}' AND CloseDate >= ${month.firstDay} AND CloseDate <= ${month.lastDay} AND IsClosed = false`;
+  const omegaResult = runSoql(orgAlias, omegaQuery);
+  if (omegaResult.error) {
+    results.errors.push(`Omega opps: ${omegaResult.error}`);
+  } else {
+    const row = omegaResult.records?.[0];
+    const count = omegaResult.totalSize ?? row?.expr0 ?? row?.count ?? 0;
+    results.opportunitiesOmegaCurrentMonth = Number(count);
+  }
+
+  // Omega flagship ("Omega, Inc - New Business") open in current month
+  const flagshipQuery = `SELECT COUNT() FROM Opportunity WHERE Name LIKE 'Omega, Inc - New Business%' AND CloseDate >= ${month.firstDay} AND CloseDate <= ${month.lastDay} AND IsClosed = false`;
+  const flagshipResult = runSoql(orgAlias, flagshipQuery);
+  if (!flagshipResult.error) {
+    const row = flagshipResult.records?.[0];
+    const n = flagshipResult.totalSize ?? row?.expr0 ?? row?.count ?? 0;
+    results.omegaFlagshipOpen = Number(n) >= 1;
+  }
+
   // Events in the next N days
   const days = thresholds?.events?.minUpcomingDays ?? 14;
   const eventQuery = `SELECT COUNT() FROM Event WHERE StartDateTime >= TODAY AND StartDateTime <= NEXT_N_DAYS:${days}`;
@@ -86,6 +110,19 @@ export async function runHygieneChecks(orgAlias, thresholds) {
     const row = eventResult.records?.[0];
     const count = eventResult.totalSize ?? row?.expr0 ?? row?.count ?? 0;
     results.eventsUpcoming = Number(count);
+  }
+
+  // Activity: open Omega opps should have at least one Task in last 30 days
+  const activityDays = thresholds?.activity?.minRecentDays ?? 30;
+  const activityCutoff = new Date();
+  activityCutoff.setUTCDate(activityCutoff.getUTCDate() - activityDays);
+  const activityCutoffStr = activityCutoff.toISOString().slice(0, 10);
+  const activityQuery = `SELECT COUNT() FROM Opportunity WHERE Account.Name LIKE '${omegaPattern}' AND CloseDate >= ${month.firstDay} AND CloseDate <= ${month.lastDay} AND IsClosed = false AND Id IN (SELECT WhatId FROM Task WHERE CreatedDate >= ${activityCutoffStr})`;
+  const activityResult = runSoql(orgAlias, activityQuery);
+  if (!activityResult.error && results.opportunitiesOmegaCurrentMonth !== null) {
+    const row = activityResult.records?.[0];
+    const withActivity = Number(activityResult.totalSize ?? row?.expr0 ?? row?.count ?? 0);
+    results.activityOmegaOk = results.opportunitiesOmegaCurrentMonth === 0 || withActivity >= results.opportunitiesOmegaCurrentMonth;
   }
 
   return results;

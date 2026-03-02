@@ -4,9 +4,9 @@ A lightweight automated agent that monitors and maintains Salesforce demo org (S
 
 ## Goals
 
-- Ensure every SDO has **current-month Opportunity** and **calendar (Event)** data before events run
+- Ensure every SDO has **current-quarter Omega pipeline** (key demo opps open and in active stages), **upcoming calendar events**, and **recent activity** on Omega opps
 - Surface org health status via **Slack** and **console** report
-- Auto-fix common hygiene issues (stale close dates, missing events) when enabled
+- Auto-fix by **moving** existing opportunities into the current month (Omega-first), adding events, and adding Tasks on Omega opps when needed — **no creating new opps**
 - Support **multiple orgs** across regions without manual logins (after one-time auth)
 
 ## Architecture
@@ -14,12 +14,12 @@ A lightweight automated agent that monitors and maintains Salesforce demo org (S
 | Component | Description |
 |-----------|-------------|
 | **Org config registry** | `src/config/orgs.json` – list of org aliases and regions |
-| **Thresholds** | `src/config/thresholds.json` – min opportunities (current month), min events (upcoming days) |
+| **Thresholds** | `src/config/thresholds.json` – opportunities (total + Omega), events, activity |
 | **Auth manager** | Uses Salesforce CLI (`sf`) – orgs must be pre-authorized |
-| **Hygiene check engine** | SOQL: Opportunities (current month), Events (next N days) |
-| **Evaluator** | Pass/fail vs thresholds |
-| **Reporter** | Console + optional Slack webhook |
-| **Auto-remediation** | Runs Apex scripts to create opportunities/events when below threshold |
+| **Hygiene check engine** | SOQL: pipeline count, Omega count, flagship opp, events, Omega activity |
+| **Evaluator** | Pass/fail vs thresholds (fails if Omega is below threshold even when total passes) |
+| **Reporter** | Console + optional Slack webhook (Pipeline, Omega, Events, Activity) |
+| **Auto-remediation** | Apex: move/reopen opps (Omega-first), create events, add Tasks on Omega opps |
 | **Scheduler** | GitHub Actions cron (or local cron) |
 
 ## Prerequisites
@@ -49,7 +49,7 @@ sf org login web --alias sdo-amer --instance-url https://login.salesforce.com
 ### 3. Configure org list and thresholds
 
 - **`src/config/orgs.json`** – set `alias` to match your `sf org list` aliases and set `region` (AMER, EMEA, APAC).
-- **`src/config/thresholds.json`** – adjust `minCurrentMonth` (opportunities) and `minCount` / `minUpcomingDays` (events) as needed.
+- **`src/config/thresholds.json`** – `opportunities.minCurrentMonth`, `opportunities.minOmega`, `opportunities.omegaAccountPattern`, `events.minCount` / `minUpcomingDays`, `activity.minRecentDays`.
 
 ### 4. (Optional) Slack
 
@@ -127,15 +127,16 @@ npm run remediate
 
 When an org is **below** the configured thresholds:
 
-1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` creates open Opportunities with Close Date in the current month.
-2. **Events** – `scripts/EnsureUpcomingEvents.apex` creates Events in the next 14 days for the running user.
+1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Priority: (1) reactivate closed Omega opps → stage `Negotiation/Review`, (2) move stale open opps into current month, (3) reopen closed non-Omega from last 120 days → stage `Qualification`.
+2. **Events** – `scripts/EnsureUpcomingEvents.apex` creates Events in the next 14 days (Omega-themed subjects when possible).
+3. **Activity** – `scripts/EnsureOppActivity.apex` adds completed Tasks on open Omega opps that have no activity in the last 30 days.
 
 Remediation runs only when you use `npm start` (or `npm run remediate`). Use `npm run check` in CI to avoid creating data automatically.
 
 ## Config reference
 
 - **orgs.json** – `alias` (required), `region`, `description`
-- **thresholds.json** – `opportunities.minCurrentMonth`, `events.minUpcomingDays`, `events.minCount`
+- **thresholds.json** – `opportunities.minCurrentMonth`, `opportunities.minOmega`, `opportunities.omegaAccountPattern`, `opportunities.reopenStageOmega` / `reopenStageOther`, `events.minUpcomingDays`, `events.minCount`, `activity.minRecentDays`, `activity.omegaOnly`
 - **.env** – `SLACK_WEBHOOK_URL`, optional `ORG_CONFIG_PATH`, `THRESHOLDS_PATH`
 
 ## License

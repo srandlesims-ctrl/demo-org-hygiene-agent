@@ -65,7 +65,7 @@ async function main() {
       const rem = await remediate(alias, evalResult);
       if (rem.errors.length) {
         evalResult.failures.push(`Remediation: ${rem.errors.join('; ')}`);
-      } else if (rem.opportunitiesCreated || rem.eventsCreated) {
+      } else if (rem.opportunitiesCreated || rem.eventsCreated || rem.activityCreated) {
         evalResult.failures.push('Remediation ran; re-run check to verify.');
       }
     }
