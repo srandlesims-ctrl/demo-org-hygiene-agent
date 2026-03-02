@@ -59,22 +59,23 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         }
     }
 
-    // STEP 2: Move stale open opps into current month
-    if (currentTotal < minTotal) {
+    // STEP 2: Move stale open opps into current month (run when under total OR under Omega threshold)
+    if (currentTotal < minTotal || currentOmega < minOmega) {
         excludeIds = new List<Id>(seen);
         List<Opportunity> staleOpen = [
-            SELECT Id, Name, StageName, CloseDate FROM Opportunity
+            SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
             WHERE IsClosed = false AND CloseDate < :firstDayMonth
             AND Id NOT IN :excludeIds
             ORDER BY CloseDate DESC LIMIT 10
         ];
         for (Opportunity o : staleOpen) {
-            if (currentTotal >= minTotal) break;
+            if (currentTotal >= minTotal && currentOmega >= minOmega) break;
             o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
             dayOffset += 3;
             toUpdate.add(o);
             seen.add(o.Id);
             currentTotal++;
+            if (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) currentOmega++;
         }
     }
 
@@ -85,7 +86,6 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         List<Opportunity> closedOther = [
             SELECT Id, Name, StageName, CloseDate FROM Opportunity
             WHERE IsClosed = true AND CloseDate >= :cutoff AND CloseDate < :firstDayMonth
-            AND (Account.Name = null OR Account.Name NOT LIKE :omegaPattern)
             AND Id NOT IN :excludeIds
             ORDER BY CloseDate DESC LIMIT 10
         ];

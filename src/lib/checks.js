@@ -91,8 +91,8 @@ export async function runHygieneChecks(orgAlias, thresholds) {
     results.opportunitiesOmegaCurrentMonth = Number(count);
   }
 
-  // Omega flagship ("Omega, Inc - New Business") open in current month
-  const flagshipQuery = `SELECT COUNT() FROM Opportunity WHERE Name LIKE 'Omega, Inc - New Business%' AND CloseDate >= ${month.firstDay} AND CloseDate <= ${month.lastDay} AND IsClosed = false`;
+  // Omega flagship (e.g. "Omega, Inc. - New Business - 128K") open in current month
+  const flagshipQuery = `SELECT COUNT() FROM Opportunity WHERE Name LIKE '%Omega%New Business%' AND CloseDate >= ${month.firstDay} AND CloseDate <= ${month.lastDay} AND IsClosed = false`;
   const flagshipResult = runSoql(orgAlias, flagshipQuery);
   if (!flagshipResult.error) {
     const row = flagshipResult.records?.[0];
