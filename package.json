@@ -8,6 +8,10 @@
     "start": "node src/index.js",
     "check": "node src/index.js --no-remediate",
     "remediate": "node src/index.js --remediate",
+    "demo:before": "sf apex run --file scripts/DemoSetup_StalePipeline.apex --target-org sdo-amer && sf apex run --file scripts/DemoSetup_CloseOmega128K.apex --target-org sdo-amer",
+    "demo:after": "npm start; sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer",
+    "demo:flow": "sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer",
+    "demo": "npm run demo:before && npm run demo:after",
     "test": "node --test src/**/*.test.js"
   },
   "keywords": ["salesforce", "sdo", "demo", "hygiene", "automation"],

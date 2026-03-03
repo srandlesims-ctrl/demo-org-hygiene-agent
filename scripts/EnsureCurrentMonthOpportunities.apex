@@ -14,6 +14,11 @@ Date todayUtc = Datetime.now().dateGmt();
 Date firstDayMonth = Date.newInstance(todayUtc.year(), todayUtc.month(), 1);
 Date lastDayMonth = firstDayMonth.addMonths(1).addDays(-1);
 Integer maxDayOffset = firstDayMonth.daysBetween(lastDayMonth);
+// Previous quarter bounds (same as DemoSetup_StalePipeline) so we prefer bringing those opps back first
+Integer qMonth = ((todayUtc.month() - 1) / 3) * 3 + 1;
+Date firstDayThisQ = Date.newInstance(todayUtc.year(), qMonth, 1);
+Date firstDayLastQ = firstDayThisQ.addMonths(-3);
+Date lastDayLastQ = firstDayThisQ.addDays(-1);
 
 // --- Count current state (demo POV owner only) ---
 List<Opportunity> currentOpps = [
@@ -63,17 +68,19 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         }
     }
 
-    // STEP 2: Move stale open opps into current month (run when under total OR under Omega threshold)
+    // STEP 2: Move stale open opps into current month. Prefer previous-quarter stale first
+    // (opps moved by DemoSetup_StalePipeline — including Omega 44k/128k) so they always come back.
     if (currentTotal < minTotal || currentOmega < minOmega) {
         excludeIds = new List<Id>(seen);
-        List<Opportunity> staleOpen = [
+        // 2a: Stale open in previous quarter (demo script’s opps) — oldest first
+        List<Opportunity> staleOpenLastQ = [
             SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
             WHERE OwnerId = :demoOwnerId
-              AND IsClosed = false AND CloseDate < :firstDayMonth
+              AND IsClosed = false AND CloseDate >= :firstDayLastQ AND CloseDate <= :lastDayLastQ
               AND Id NOT IN :excludeIds
-            ORDER BY CloseDate DESC LIMIT 10
+            ORDER BY CloseDate ASC LIMIT 10
         ];
-        for (Opportunity o : staleOpen) {
+        for (Opportunity o : staleOpenLastQ) {
             if (currentTotal >= minTotal && currentOmega >= minOmega) break;
             o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
             dayOffset += 3;
@@ -81,6 +88,26 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
             seen.add(o.Id);
             currentTotal++;
             if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) currentOmega++;
+        }
+        // 2b: Other stale open (before current month, not in last quarter) if still under threshold
+        if (currentTotal < minTotal || currentOmega < minOmega) {
+            excludeIds = new List<Id>(seen);
+            List<Opportunity> staleOpenOther = [
+                SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
+                WHERE OwnerId = :demoOwnerId
+                  AND IsClosed = false AND CloseDate < :firstDayMonth AND (CloseDate < :firstDayLastQ OR CloseDate > :lastDayLastQ)
+                  AND Id NOT IN :excludeIds
+                ORDER BY CloseDate ASC LIMIT 10
+            ];
+            for (Opportunity o : staleOpenOther) {
+                if (currentTotal >= minTotal && currentOmega >= minOmega) break;
+                o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+                dayOffset += 3;
+                toUpdate.add(o);
+                seen.add(o.Id);
+                currentTotal++;
+                if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) currentOmega++;
+            }
         }
     }
 

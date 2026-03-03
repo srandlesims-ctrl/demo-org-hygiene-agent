@@ -1,5 +1,6 @@
 // Demo Org Hygiene Agent — Activity remediation for Pipeline Management Agent Activity
-// Ensures every open opportunity in the current quarter (owned by demo POV user) has at least one recent Task.
+// Ensures every open opportunity in the current quarter (owned by demo POV user) has recent Tasks:
+// 2 per non-Omega opp, 3 per Omega opp; ActivityDate spread over the last 7 days for signal diversity.
 // Run via: sf apex run --file scripts/EnsureOppActivity.apex --target-org <alias>
 
 Id demoOwnerId = '005Wt000004WHt3IAG';  // Jennifer Hynes — demo POV for SDO
@@ -38,21 +39,25 @@ List<String> subjects = new List<String>{
     'Legal review of contract terms initiated',
     'Discovery call completed',
     'Stakeholder mapping updated',
-    'Next steps agreed with champion'
+    'Next steps agreed with champion',
+    'Executive sponsor meeting scheduled',
+    'Contract redline sent to legal',
+    'Reference call completed',
+    'Demo follow-up with technical team'
 };
 
 Integer subjectIndex = 0;
 for (Opportunity opp : opps) {
     if (opp.Tasks == null || opp.Tasks.isEmpty()) {
         Boolean isOmega = (opp.Account.Name != null && opp.Account.Name.contains('Omega')) || (opp.Name != null && opp.Name.contains('Omega'));
-        Integer tasksToAdd = isOmega ? 3 : 1;
+        Integer tasksToAdd = isOmega ? 3 : 2;
         for (Integer i = 0; i < tasksToAdd && subjectIndex < subjects.size(); i++) {
             Task t = new Task();
             t.WhatId = opp.Id;
             t.Subject = subjects[subjectIndex];
             t.Status = 'Completed';
             t.Priority = 'Normal';
-            t.ActivityDate = Date.today().addDays(-Math.mod(subjectIndex * 2, 14));
+            t.ActivityDate = Date.today().addDays(-(1 + Math.mod(subjectIndex, 7)));
             newTasks.add(t);
             subjectIndex++;
         }

@@ -105,10 +105,10 @@ export async function remediate(orgAlias, evalResult) {
     errors.push(`Notes remediation: ${e.message}`);
   }
 
-  // Run Pipeline Management flow so Agent Activity is populated for all current-quarter demo POV opps
-  // (after we ensured Tasks + Notes, or when we have open opps so scheduled runs refresh Agent Activity)
+  // Always run Pipeline Management flow when script exists so Agent Activity is refreshed on every npm start.
+  // Flow handles empty current-quarter opps gracefully (debug and return).
   try {
-    if (existsSync(flowScript) && (activityCreated || notesCreated || needOppRemediation || needActivityRemediation)) {
+    if (existsSync(flowScript)) {
       const res = runApexScript(orgAlias, flowScript);
       if (res.ok) flowStarted = 1;
       else errors.push(`Pipeline Management flow: ${res.error}`);

@@ -45,6 +45,8 @@ jobs:
         run: npm start
         continue-on-error: true
 
+      # Separate step so the flow always runs even when npm start exits 1 (e.g. org still failing after remediate).
+      # This keeps Agent Activity refreshed every scheduled run regardless of check result.
       - name: Run Pipeline Management flow
         run: sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer
         continue-on-error: true

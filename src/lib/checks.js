@@ -86,6 +86,10 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
   const omegaPattern = (thresholds?.opportunities?.omegaAccountPattern ?? '%Omega%').replace(/'/g, "''");
   const quarter = getCurrentQuarterBounds();
   const ownerFilter = org?.demoOwnerId ? ` AND OwnerId = '${org.demoOwnerId}'` : '';
+  // Use explicit UTC month/quarter so checks match Apex remediation (which uses dateGmt).
+  // SOQL date filter values must be unquoted (e.g. 2026-03-01).
+  const monthFilter = ` AND CloseDate >= ${month.firstDay} AND CloseDate <= ${month.lastDay}`;
+  const quarterFilter = ` AND CloseDate >= ${quarter.firstDay} AND CloseDate <= ${quarter.lastDay}`;
   const results = {
     orgAlias,
     _monthBounds: { firstDay: month.firstDay, lastDay: month.lastDay },
@@ -101,8 +105,8 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
     errors: [],
   };
 
-  // Use SOQL relative date literals (THIS_MONTH / THIS_QUARTER). ownerFilter = demo POV (e.g. Jennifer Hynes).
-  const oppQuery = `SELECT COUNT() FROM Opportunity WHERE IsClosed = false AND CloseDate = THIS_MONTH${ownerFilter}`;
+  // Explicit month/quarter (UTC) so checks match Apex remediation and avoid org-timezone mismatches.
+  const oppQuery = `SELECT COUNT() FROM Opportunity WHERE IsClosed = false${monthFilter}${ownerFilter}`;
   const oppResult = runSoql(orgAlias, oppQuery);
   if (oppResult.error) {
     results.errors.push(`Opportunities: ${oppResult.error}`);
@@ -111,7 +115,7 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
     results.opportunitiesCurrentMonth = Number(count);
   }
 
-  const omegaQuery = `SELECT COUNT() FROM Opportunity WHERE (Account.Name LIKE '${omegaPattern}' OR Name LIKE '${omegaPattern}') AND IsClosed = false AND CloseDate = THIS_MONTH${ownerFilter}`;
+  const omegaQuery = `SELECT COUNT() FROM Opportunity WHERE (Account.Name LIKE '${omegaPattern}' OR Name LIKE '${omegaPattern}') AND IsClosed = false${monthFilter}${ownerFilter}`;
   const omegaResult = runSoql(orgAlias, omegaQuery);
   if (omegaResult.error) {
     results.errors.push(`Omega opps: ${omegaResult.error}`);
@@ -120,7 +124,7 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
     results.opportunitiesOmegaCurrentMonth = Number(count);
   }
 
-  const flagshipQuery = `SELECT COUNT() FROM Opportunity WHERE Name LIKE '%Omega%New Business%' AND IsClosed = false AND CloseDate = THIS_MONTH${ownerFilter}`;
+  const flagshipQuery = `SELECT COUNT() FROM Opportunity WHERE Name LIKE '%Omega%New Business%' AND IsClosed = false${monthFilter}${ownerFilter}`;
   const flagshipResult = runSoql(orgAlias, flagshipQuery);
   if (!flagshipResult.error) {
     const n = flagshipResult.totalSize ?? flagshipResult.records?.[0]?.expr0 ?? flagshipResult.records?.[0]?.count ?? 0;
@@ -141,7 +145,7 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
 
   // Activity: use parent-child query (Task not supported in semi-join). LAST_N_DAYS:n = created in last n days.
   const activityDays = thresholds?.activity?.minRecentDays ?? 30;
-  const activityQueryOmega = `SELECT Id, (SELECT Id FROM Tasks WHERE CreatedDate = LAST_N_DAYS:${activityDays}) FROM Opportunity WHERE (Account.Name LIKE '${omegaPattern}' OR Name LIKE '${omegaPattern}') AND IsClosed = false AND CloseDate = THIS_MONTH${ownerFilter}`;
+  const activityQueryOmega = `SELECT Id, (SELECT Id FROM Tasks WHERE CreatedDate = LAST_N_DAYS:${activityDays}) FROM Opportunity WHERE (Account.Name LIKE '${omegaPattern}' OR Name LIKE '${omegaPattern}') AND IsClosed = false${monthFilter}${ownerFilter}`;
   const activityResultOmega = runSoql(orgAlias, activityQueryOmega);
   if (activityResultOmega.error) {
     results.errors.push(`Activity (Omega): ${activityResultOmega.error}`);
@@ -155,14 +159,14 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
   }
 
   // Agent Activity readiness: all open opps in current quarter (parent-child query for Tasks)
-  const quarterTotalQuery = `SELECT COUNT() FROM Opportunity WHERE IsClosed = false AND CloseDate = THIS_QUARTER${ownerFilter}`;
+  const quarterTotalQuery = `SELECT COUNT() FROM Opportunity WHERE IsClosed = false${quarterFilter}${ownerFilter}`;
   const quarterTotalResult = runSoql(orgAlias, quarterTotalQuery);
   if (quarterTotalResult.error) {
     results.errors.push(`Quarter total: ${quarterTotalResult.error}`);
   } else {
     results.openCurrentQuarterTotal = Number(quarterTotalResult.totalSize ?? quarterTotalResult.records?.[0]?.expr0 ?? quarterTotalResult.records?.[0]?.count ?? 0);
   }
-  const quarterWithActivityQuery = `SELECT Id, (SELECT Id FROM Tasks WHERE CreatedDate = LAST_N_DAYS:${activityDays}) FROM Opportunity WHERE IsClosed = false AND CloseDate = THIS_QUARTER${ownerFilter}`;
+  const quarterWithActivityQuery = `SELECT Id, (SELECT Id FROM Tasks WHERE CreatedDate = LAST_N_DAYS:${activityDays}) FROM Opportunity WHERE IsClosed = false${quarterFilter}${ownerFilter}`;
   const quarterWithActivityResult = runSoql(orgAlias, quarterWithActivityQuery);
   if (quarterWithActivityResult.error) {
     results.errors.push(`Quarter with activity: ${quarterWithActivityResult.error}`);

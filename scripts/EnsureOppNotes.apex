@@ -1,6 +1,6 @@
 // Demo Org Hygiene Agent — Notes remediation for Pipeline Management Agent Activity
-// Ensures every open opportunity in the current quarter (owned by demo POV) has at least one
-// recent Enhanced Note. Pipeline Management can use Notes + Tasks + email/calls for insights.
+// Ensures every open opportunity in the current quarter (owned by demo POV) has at least two
+// recent Enhanced Notes when none exist. Pipeline Management uses Notes + Tasks + email/calls for insights.
 // Run via: sf apex run --file scripts/EnsureOppNotes.apex --target-org <alias>
 
 Id demoOwnerId = '005Wt000004WHt3IAG';  // Jennifer Hynes — demo POV for SDO
@@ -55,7 +55,9 @@ List<String> titles = new List<String>{
     'Follow-up and action items',
     'Discovery summary',
     'Champion feedback',
-    'Internal alignment notes'
+    'Internal alignment notes',
+    'ROI one-pager sent',
+    'Technical validation scheduled'
 };
 List<String> bodies = new List<String>{
     'Reviewed deal with team. Champion confirmed budget timeline. Send proposal by end of week.',
@@ -65,23 +67,28 @@ List<String> bodies = new List<String>{
     'Action items: send contract redline, schedule legal review, confirm go-live date with customer.',
     'Discovery summary: pain points around reporting and integrations. Demo covered both. Strong interest.',
     'Champion feedback: liked the roadmap. Concern about support during rollout. Highlight success stories next.',
-    'Internal alignment: AE and SE agreed on approach. Ready for exec sponsor meeting.'
+    'Internal alignment: AE and SE agreed on approach. Ready for exec sponsor meeting.',
+    'Sent ROI one-pager. Economic buyer requested comparison to current solution. Delivered same day.',
+    'Technical validation on the calendar. SE and customer architect will run through integration scenarios.'
 };
 
 Integer idx = 0;
 for (Opportunity o : opps) {
     if (oppIdsWithRecentNote.contains(o.Id)) continue;
-    String title = titles[Math.mod(idx, titles.size())];
-    String body = bodies[Math.mod(idx, bodies.size())];
-    String safeName = title.replaceAll('[\\\\/:*?\"<>|]', '_');
-    newNotes.add(new ContentVersion(
-        Title = title,
-        PathOnClient = safeName + '.snote',
-        VersionData = Blob.valueOf(body),
-        FirstPublishLocationId = o.Id
-    ));
+    for (Integer n = 0; n < 2; n++) {
+        Integer k = Math.mod(idx * 2 + n, titles.size());
+        String title = titles[k];
+        String body = bodies[k];
+        String safeName = title.replaceAll('[\\\\/:*?\"<>|]', '_') + (n == 0 ? '' : '_2');
+        newNotes.add(new ContentVersion(
+            Title = title,
+            PathOnClient = safeName + '.snote',
+            VersionData = Blob.valueOf(body),
+            FirstPublishLocationId = o.Id
+        ));
+    }
     idx++;
-    System.debug('Adding note to: ' + o.Name);
+    System.debug('Adding 2 notes to: ' + o.Name);
 }
 
 if (!newNotes.isEmpty()) {

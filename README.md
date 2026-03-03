@@ -63,7 +63,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ## Usage
 
 ```bash
-# Run checks and auto-remediate when below threshold
+# Run checks and auto-remediate when below threshold (always runs Pipeline Management flow)
 npm start
 
 # Run checks only (no remediation)
@@ -71,6 +71,12 @@ npm run check
 
 # Same as npm start (explicit remediate)
 npm run remediate
+
+# Demo: create before state, then fix, then optionally refresh flow
+npm run demo:before    # Move opps to previous quarter + close Omega 128K
+npm run demo:fix       # npm start twice (remediate then verify)
+npm run demo:flow      # Run Pipeline Management flow only
+npm run demo           # Full reset: demo:before + demo:fix + demo:flow
 ```
 
 - **Exit code:** `0` if all orgs pass, `1` if any fail (for CI).
@@ -130,7 +136,7 @@ The workflow runs **every 3 days** at 06:00 UTC: (1) `npm start` (check + remedi
 
 When an org is **below** the configured thresholds:
 
-1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Priority: (1) reactivate closed Omega opps → stage `Negotiation/Review`, (2) move stale open opps into current month, (3) reopen closed non-Omega from last 120 days → stage `Qualification`.
+1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Priority: (1) reactivate closed Omega opps (e.g. 128K) → stage `Negotiation`, (2) move stale open opps into current month — **previous-quarter** opps first (same set as demo script, including Omega 44k/128k), then other stale, (3) reopen closed non-Omega from last 120 days → stage `Qualification`.
 2. **Events** – `scripts/EnsureUpcomingEvents.apex` creates Events in the next 14 days (Omega-themed subjects when possible).
 3. **Activity** – `scripts/EnsureOppActivity.apex` adds completed Tasks on open current-quarter opps (demo POV owner) that have no activity in the last 30 days.
 4. **Notes** – `scripts/EnsureOppNotes.apex` adds one Enhanced Note (Lightning Notes) per open current-quarter opp that doesn’t already have a recent note, so Pipeline Management has Notes + Tasks for insights.
@@ -151,11 +157,45 @@ sf apex run --file scripts/DemoSetup_CloseOmega128K.apex --target-org sdo-amer
 
 Then run the agent: `npm start` (or `npm run check` then `npm run remediate`). The agent will move those opps back to the current month and reopen the Omega deal.
 
+**Why the right opps come back:** Remediation (1) reactivates closed Omega (e.g. 128K) first, then (2) moves **previous-quarter** stale open opps into the current month (the same set moved by `DemoSetup_StalePipeline`, including Omega 44k/128k and other strong demo opps), then (3) other stale or closed opps if still under threshold. Checks use the same UTC month/quarter as Apex so pass/fail matches what you see in Pipeline Inspection.
+
+**Removing opps from Pipeline Inspection (before state)**  
+As Jennifer Hynes (or admin), the best practice is to **move** opps out of "This Quarter" so they disappear from the Pipeline Inspection view — don’t delete. Run `DemoSetup_StalePipeline.apex`: it moves all of Jennifer’s current-quarter open opps to the previous quarter. They no longer show when you filter by **Close Date: This Quarter**. Optionally run `DemoSetup_CloseOmega128K.apex` to close the Omega 128K deal so the agent can **reopen** it during remediation. No manual list "remove" or delete is required.
+
 **Note:** Jennifer Hynes's User Id is hardcoded in `DemoSetup_StalePipeline.apex` (`005Wt000004WHt3IAG`). If your SDO uses a different Id, edit that script.
 
+### Live demo: commands to show in real time
+
+Use the npm scripts below so the audience sees the **before** (empty pipeline) and **after** (full pipeline with Omega and Agent Activity). All commands assume you are in the project root (`demo-org-hygiene-agent`) and the org alias is `sdo-amer`.
+
+**1. Create the before state**
+
+```bash
+npm run demo:before
+```
+
+Then in Salesforce, log in as **Jennifer Hynes** and open **Sales → Opportunities → My Pipeline** with **Close Date: This Quarter**, **Owner: Me**. Refresh. Show that the pipeline is **empty** (0 opps, Agent Activity None).
+
+**2. Restore the pipeline — opps + activity + Pipeline Management flow in one command**
+
+```bash
+npm run demo:after
+```
+
+This runs `npm start` (remediates: moves opps back to current quarter, adds Tasks and Notes, then runs the Pipeline Management flow) followed immediately by an explicit second flow run for a fresh signal pass. Refresh **Pipeline Inspection** (same filters). Show that **This Quarter** now has 8+ opps including Omega (44k and 128k) with Tasks, Notes, and Agent Activity. Insights may take 2–5 minutes to appear — refresh once more after that.
+
+**Full automated reset (one command, no steps)**
+
+```bash
+npm run demo
+```
+
+Runs `demo:before` → `demo:after` end to end. Use this when you want to reset the org silently before the audience is watching, then open Pipeline Inspection to show the result.
+
+Runs `demo:before` → `demo:fix` → `demo:flow` in sequence. Use for a full end-to-end reset without manual steps.
 ## Run Pipeline Management flow
 
-The **Pipeline Management** flow (same as clicking "Get Pipeline Management Insights") runs **automatically** (1) after remediation when activity or notes were added, and (2) in the GitHub Actions scheduled job every 3 days. It targets **all open current-quarter opportunities** for the demo POV user (e.g. Jennifer Hynes), so Agent Activity is populated for the same opps that have Tasks and Notes.
+The **Pipeline Management** flow (same as clicking "Get Pipeline Management Insights") runs **automatically** on every `npm start` (so Agent Activity is always refreshed when you run the agent), and again in the GitHub Actions scheduled job every 3 days. It targets **all open current-quarter opportunities** for the demo POV user (e.g. Jennifer Hynes), so Agent Activity is populated for the same opps that have Tasks and Notes.
 
 To run it **manually** from the command line:
 
@@ -172,7 +212,7 @@ To run it **manually** from the command line:
 
 4. **Confirm the flow API name** if you get a compile error: In Setup go to **Flows**, open **SDO Process Field Updates Autolaunch**, and check the **API Name**. If it differs (e.g. a namespace prefix), update the class name in `scripts/RunPipelineManagementFlow.apex` to match (e.g. `Flow.Interview.YourActualApiName`).
 
-5. **Check results**: Go to **Opportunities > Pipeline Inspection**, filter by Close Date (e.g. This Quarter). In the **Agent Activity** column, look for **Need Review**; open an item to see the insight and Accept / Edit / Decline. Insights can take a few minutes to appear after the flow runs.
+5. **Check results**: Go to **Opportunities > Pipeline Inspection**, filter by Close Date (e.g. This Quarter). In the **Agent Activity** column, look for **Need Review** or **Update Next Step!**; open an item to see the insight and Accept / Edit / Decline. Insights can take a few minutes to appear after the flow runs. **If only one or two opps show Agent Activity:** Pipeline Management generates insights from recent activity (Tasks, Notes, emails, calls). Run `npm start` again so the hygiene agent adds Tasks and Notes to current-quarter opps that don’t have them, then runs the flow again; wait a few minutes and refresh Pipeline Inspection for more insights to appear.
 
 ## Config reference
 
