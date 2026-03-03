@@ -15,7 +15,10 @@ Integer endMonth = q * 3;
 Date firstDayQuarter = Date.newInstance(y, startMonth, 1);
 Date lastDayQuarter = Date.newInstance(y, endMonth, 1).addMonths(1).addDays(-1);
 
-// All open current-quarter opps for demo POV (up to 25 to cover threshold + headroom, avoid CPU limit)
+// Capped at 15 to stay within CPU budget — the SDO_Tool_SalesforceRewind_OpportunityTeamMember
+// trigger fires for each opp and accumulates ~700-800ms CPU per iteration. 15 opps ≈ 11k ms,
+// which is the safe ceiling before the trigger CPU limit causes a hard failure.
+// ORDER BY CloseDate ASC ensures the most urgent opps (overdue + soonest close) are processed first.
 List<Opportunity> opps = [
     SELECT Id, Name
     FROM Opportunity
@@ -24,7 +27,7 @@ List<Opportunity> opps = [
       AND CloseDate >= :firstDayQuarter
       AND CloseDate <= :lastDayQuarter
     ORDER BY CloseDate ASC
-    LIMIT 25
+    LIMIT 15
 ];
 
 if (opps.isEmpty()) {
