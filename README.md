@@ -73,7 +73,7 @@ npm run check
 npm run remediate
 
 # Demo: create before state, then fix, then optionally refresh flow
-npm run demo:before    # Move opps to previous quarter + close Omega 128K
+npm run demo:before    # Move Jennifer's current-quarter opps to previous quarter (stale pipeline)
 npm run demo:fix       # npm start twice (remediate then verify)
 npm run demo:flow      # Run Pipeline Management flow only
 npm run demo           # Full reset: demo:before + demo:fix + demo:flow
@@ -148,21 +148,27 @@ Remediation runs only when you use `npm start` (or `npm run remediate`). Use `np
 To show the agent "fixing" the org, create a messy state first (run against your SDO alias, e.g. `sdo-amer`):
 
 ```bash
-# 1) Move Jennifer Hynes's current-quarter open opps to previous quarter (stale)
+# Move Jennifer Hynes’s current-quarter open opps to previous quarter (stale pipeline)
 sf apex run --file scripts/DemoSetup_StalePipeline.apex --target-org sdo-amer
-
-# 2) Close the Omega 128K deal so the agent can reactivate it
-sf apex run --file scripts/DemoSetup_CloseOmega128K.apex --target-org sdo-amer
 ```
 
-Then run the agent: `npm start` (or `npm run check` then `npm run remediate`). The agent will move those opps back to the current month and reopen the Omega deal.
+Then run the agent: `npm start`. The agent will move those opps back to the current month with Tasks, Notes, and Agent Activity.
 
-**Why the right opps come back:** Remediation (1) reactivates closed Omega (e.g. 128K) first, then (2) moves **previous-quarter** stale open opps into the current month (the same set moved by `DemoSetup_StalePipeline`, including Omega 44k/128k and other strong demo opps), then (3) other stale or closed opps if still under threshold. Checks use the same UTC month/quarter as Apex so pass/fail matches what you see in Pipeline Inspection.
+**Why the right opps come back:** Remediation (1) reactivates closed Omega opps first, then (2) moves **previous-quarter** stale open opps into the current month (the same set moved by `DemoSetup_StalePipeline`, including Omega 44k/128k and other strong demo opps), then (3) other stale or closed opps if still under threshold. Checks use the same UTC month/quarter as Apex so pass/fail matches what you see in Pipeline Inspection.
 
-**Removing opps from Pipeline Inspection (before state)**  
-As Jennifer Hynes (or admin), the best practice is to **move** opps out of "This Quarter" so they disappear from the Pipeline Inspection view — don’t delete. Run `DemoSetup_StalePipeline.apex`: it moves all of Jennifer’s current-quarter open opps to the previous quarter. They no longer show when you filter by **Close Date: This Quarter**. Optionally run `DemoSetup_CloseOmega128K.apex` to close the Omega 128K deal so the agent can **reopen** it during remediation. No manual list "remove" or delete is required.
+**How the before state works:** `DemoSetup_StalePipeline.apex` moves all of Jennifer’s current-quarter open opps to the previous quarter. They no longer appear when you filter Pipeline Inspection by **Close Date: This Quarter**. Omega 128K stays open — no manual delete needed.
 
-**Note:** Jennifer Hynes's User Id is hardcoded in `DemoSetup_StalePipeline.apex` (`005Wt000004WHt3IAG`). If your SDO uses a different Id, edit that script.
+**Note:** Jennifer Hynes’s User Id is hardcoded in `DemoSetup_StalePipeline.apex` (`005Wt000004WHt3IAG`). If your SDO uses a different Id, edit that script.
+
+### Scheduler stress-test (separate from the demo)
+
+`DemoSetup_CloseOmega128K.apex` simulates the real-world scenario where an SE or PMM accidentally closes the Omega 128K deal. This is **not** part of the before/after demo — it’s used to test that the **scheduled hygiene run** (every 3 days) correctly detects and reactivates a closed flagship opp. Run it on its own when you want to verify the auto-remediation path:
+
+```bash
+sf apex run --file scripts/DemoSetup_CloseOmega128K.apex --target-org sdo-amer
+# Then either wait for the next scheduled run, or trigger manually:
+npm start
+```
 
 ### Live demo: commands to show in real time
 
@@ -191,8 +197,6 @@ npm run demo
 ```
 
 Runs `demo:before` → `demo:after` end to end. Use this when you want to reset the org silently before the audience is watching, then open Pipeline Inspection to show the result.
-
-Runs `demo:before` → `demo:fix` → `demo:flow` in sequence. Use for a full end-to-end reset without manual steps.
 ## Run Pipeline Management flow
 
 The **Pipeline Management** flow (same as clicking "Get Pipeline Management Insights") runs **automatically** on every `npm start` (so Agent Activity is always refreshed when you run the agent), and again in the GitHub Actions scheduled job every 3 days. It targets **all open current-quarter opportunities** for the demo POV user (e.g. Jennifer Hynes), so Agent Activity is populated for the same opps that have Tasks and Notes.
