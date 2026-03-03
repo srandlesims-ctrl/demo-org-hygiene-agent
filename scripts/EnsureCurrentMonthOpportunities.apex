@@ -1,10 +1,12 @@
 // Demo Org Hygiene Agent — Opportunity Remediation
-// Moves existing opportunities into current month for demo POV owner. Prioritizes Omega. Does NOT create new records.
+// Moves existing opportunities into current month for demo POV owner. Prioritizes Omega.
+// Searches ANY stale date before current month so it works regardless of how far back
+// demo:before moved the opps (one quarter back, two quarters back, etc.)
 // Run via: sf apex run --file scripts/EnsureCurrentMonthOpportunities.apex --target-org <alias>
 
 Id demoOwnerId = '005Wt000004WHt3IAG';  // Jennifer Hynes — demo POV for SDO
-Integer minTotal = 8;
-Integer minOmega = 2;
+Integer minTotal = 8;    // Opps to restore to current quarter (focused pipeline for demo)
+Integer minOmega = 2;    // Always restore at least 2 Omega opps (128K is the hero)
 String omegaPattern = '%Omega%';
 String reopenStageOmega = 'Negotiation';
 String reopenStageOther = 'Discovery';
@@ -13,19 +15,17 @@ String reopenStageOther = 'Discovery';
 Date todayUtc = Datetime.now().dateGmt();
 Date firstDayMonth = Date.newInstance(todayUtc.year(), todayUtc.month(), 1);
 Date lastDayMonth = firstDayMonth.addMonths(1).addDays(-1);
-Integer maxDayOffset = firstDayMonth.daysBetween(lastDayMonth);
-// Previous quarter bounds (same as DemoSetup_StalePipeline) so we prefer bringing those opps back first
-Integer qMonth = ((todayUtc.month() - 1) / 3) * 3 + 1;
-Date firstDayThisQ = Date.newInstance(todayUtc.year(), qMonth, 1);
-Date firstDayLastQ = firstDayThisQ.addMonths(-3);
-Date lastDayLastQ = firstDayThisQ.addDays(-1);
+
+// Assign restored close dates starting from TOMORROW to avoid the PM badge skip:
+// PM won't badge opps that are overdue AND have Days in Stage = 0 (which happens right
+// after the DML update triggers SDO_Tool_SalesforceRewind_Opportunity).
+Date assignBase = todayUtc.addDays(1);
+Integer assignWindow = (Integer)assignBase.daysBetween(lastDayMonth);
+if (assignWindow < 1) assignWindow = 1;  // Edge case: last day of month
 
 System.debug('=== EnsureCurrentMonthOpportunities ===');
-System.debug('Today (UTC): ' + todayUtc);
-System.debug('Current month window: ' + firstDayMonth + ' → ' + lastDayMonth);
-System.debug('This quarter starts: ' + firstDayThisQ);
-System.debug('Prev quarter window: ' + firstDayLastQ + ' → ' + lastDayLastQ);
-System.debug('Demo owner Id: ' + demoOwnerId);
+System.debug('Current month: ' + firstDayMonth + ' → ' + lastDayMonth);
+System.debug('Assign base: ' + assignBase + ' (restoring opps from tomorrow onward to avoid overdue+DIS=0)');
 
 // --- Count current state (demo POV owner only) ---
 List<Opportunity> currentOpps = [
@@ -34,34 +34,30 @@ List<Opportunity> currentOpps = [
       AND CloseDate >= :firstDayMonth AND CloseDate <= :lastDayMonth AND IsClosed = false
 ];
 Integer currentTotal = currentOpps.size();
-
 Integer currentOmega = 0;
 for (Opportunity o : currentOpps) {
-    if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) {
+    if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega'))
+        || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) {
         currentOmega++;
     }
 }
-
-System.debug('Current month open opps: ' + currentTotal + ' (Omega: ' + currentOmega + ') — need total≥' + minTotal + ', Omega≥' + minOmega);
-for (Opportunity o : currentOpps) {
-    System.debug('  [current] ' + o.Name + ' | Acct: ' + (o.Account != null ? o.Account.Name : 'null'));
-}
+System.debug('Current month: ' + currentTotal + ' open opps (' + currentOmega + ' Omega) — need ≥' + minTotal + ' total, ≥' + minOmega + ' Omega');
 
 if (currentTotal >= minTotal && currentOmega >= minOmega) {
     System.debug('PASS — Thresholds met. No remediation needed.');
 } else {
-    System.debug('REMEDIATION needed — total=' + currentTotal + '/' + minTotal + ', Omega=' + currentOmega + '/' + minOmega);
+    System.debug('REMEDIATION needed (total=' + currentTotal + '/' + minTotal + ', Omega=' + currentOmega + '/' + minOmega + ')');
     Set<Id> seen = new Set<Id>();
     for (Opportunity o : currentOpps) seen.add(o.Id);
-
     List<Opportunity> toUpdate = new List<Opportunity>();
     Integer dayOffset = 0;
-    List<Id> excludeIds = new List<Id>(seen);
+    List<Id> excludeIds;
 
-    // STEP 1: Reactivate closed Omega opps (demo POV owner only)
+    // STEP 1: Reactivate closed Omega opps (last resort — only if none found open)
     if (currentOmega < minOmega) {
+        excludeIds = new List<Id>(seen);
         List<Opportunity> closedOmega = [
-            SELECT Id, Name, StageName, CloseDate, Amount FROM Opportunity
+            SELECT Id, Name, StageName, CloseDate FROM Opportunity
             WHERE OwnerId = :demoOwnerId
               AND (Account.Name LIKE :omegaPattern OR Name LIKE :omegaPattern) AND IsClosed = true
               AND Id NOT IN :excludeIds
@@ -69,128 +65,79 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         ];
         System.debug('Step 1 — Closed Omega candidates: ' + closedOmega.size());
         for (Opportunity o : closedOmega) {
-            System.debug('  [step1 candidate] ' + o.Name + ' | Stage: ' + o.StageName + ' | CloseDate: ' + o.CloseDate + ' | IsClosed: true');
-        }
-        for (Opportunity o : closedOmega) {
             if (currentOmega >= minOmega && currentTotal >= minTotal) break;
             o.StageName = reopenStageOmega;
-            // End of month: ensures Omega is never immediately overdue after reactivation.
-            // PM won't badge opps that are overdue with Days in Stage = 0.
-            o.CloseDate = lastDayMonth;
+            o.CloseDate = lastDayMonth;  // End of month: never overdue, PM generates badge
             toUpdate.add(o);
             seen.add(o.Id);
             currentOmega++;
             currentTotal++;
-            System.debug('  [step1 TAKE] ' + o.Name + ' → Stage: ' + reopenStageOmega + ', CloseDate: ' + lastDayMonth);
+            System.debug('  [step1] Reactivated: ' + o.Name + ' → Negotiation, ' + lastDayMonth);
         }
-    } else {
-        System.debug('Step 1 — Skipped (Omega already at ' + currentOmega + '/' + minOmega + ')');
     }
 
-    // STEP 2: Move stale open opps into current month. Always restore Omega first by querying
-    // them explicitly — a general ORDER BY CloseDate ASC can skip Omega if 8+ earlier-dated
-    // opps fill the LIMIT before Omega (e.g. 12/30 Omega after 8 opps dated 12/5–12/21).
-    if (currentTotal < minTotal || currentOmega < minOmega) {
+    // STEP 2: Move stale open opps into current month.
+    // Searches ANY date before current month — works regardless of which quarter demo:before
+    // targeted. DemoSetup_StalePipeline assigns Omega opps the LATEST stale dates (sorted
+    // by Amount DESC → 128K gets the latest) so ORDER BY CloseDate DESC always picks them first.
 
-        // 2a: Omega opps from previous quarter — explicit query so they are ALWAYS restored
-        // regardless of how many other overdue opps exist with earlier close dates.
-        if (currentOmega < minOmega) {
-            excludeIds = new List<Id>(seen);
-            List<Opportunity> staleOmegaLastQ = [
-                SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
-                WHERE OwnerId = :demoOwnerId
-                  AND IsClosed = false AND CloseDate >= :firstDayLastQ AND CloseDate <= :lastDayLastQ
-                  AND (Account.Name LIKE :omegaPattern OR Name LIKE :omegaPattern)
-                  AND Id NOT IN :excludeIds
-                ORDER BY CloseDate DESC LIMIT 5
-            ];
-            System.debug('Step 2a — Omega in prev quarter (' + firstDayLastQ + '→' + lastDayLastQ + '): ' + staleOmegaLastQ.size() + ' found');
-            for (Opportunity o : staleOmegaLastQ) {
-                System.debug('  [2a candidate] ' + o.Name + ' | Acct: ' + (o.Account != null ? o.Account.Name : 'null') + ' | CloseDate: ' + o.CloseDate);
-            }
-            for (Opportunity o : staleOmegaLastQ) {
-                if (currentOmega >= minOmega) break;
-                // End of month: ensures Omega is never overdue on restore (PM ignores Days Overdue > 0 + Days in Stage = 0)
-                o.CloseDate = lastDayMonth;
-                toUpdate.add(o);
-                seen.add(o.Id);
-                currentTotal++;
-                currentOmega++;
-                System.debug('  [2a TAKE] Restoring Omega (prev quarter): ' + o.Name + ' → CloseDate: ' + lastDayMonth);
-            }
-        } else {
-            System.debug('Step 2a — Skipped (Omega already at ' + currentOmega + '/' + minOmega + ')');
+    // 2a: Omega opps — restored first, always get end-of-month close date (PM badge trigger)
+    if (currentOmega < minOmega) {
+        excludeIds = new List<Id>(seen);
+        List<Opportunity> staleOmega = [
+            SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
+            WHERE OwnerId = :demoOwnerId
+              AND IsClosed = false AND CloseDate < :firstDayMonth
+              AND (Account.Name LIKE :omegaPattern OR Name LIKE :omegaPattern)
+              AND Id NOT IN :excludeIds
+            ORDER BY CloseDate DESC LIMIT 5
+        ];
+        System.debug('Step 2a — Stale Omega opps found: ' + staleOmega.size());
+        for (Opportunity o : staleOmega) {
+            if (currentOmega >= minOmega) break;
+            o.CloseDate = lastDayMonth;  // End of month: PM generates "Update Next Step?" badge
+            toUpdate.add(o);
+            seen.add(o.Id);
+            currentTotal++;
+            currentOmega++;
+            System.debug('  [2a] Restored: ' + o.Name + ' → ' + lastDayMonth);
         }
-
-        // 2b: Non-Omega opps from previous quarter to fill total threshold
-        if (currentTotal < minTotal) {
-            excludeIds = new List<Id>(seen);
-            List<Opportunity> staleOpenLastQ = [
-                SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
-                WHERE OwnerId = :demoOwnerId
-                  AND IsClosed = false AND CloseDate >= :firstDayLastQ AND CloseDate <= :lastDayLastQ
-                  AND Id NOT IN :excludeIds
-                ORDER BY CloseDate ASC LIMIT 10
-            ];
-            System.debug('Step 2b — All open in prev quarter (excl. already seen): ' + staleOpenLastQ.size() + ' found');
-            for (Opportunity o : staleOpenLastQ) {
-                System.debug('  [2b candidate] ' + o.Name + ' | CloseDate: ' + o.CloseDate);
-            }
-            for (Opportunity o : staleOpenLastQ) {
-                if (currentTotal >= minTotal) break;
-                Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'));
-                if (isOmegaOpp) {
-                    o.CloseDate = lastDayMonth;
-                } else {
-                    o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
-                    dayOffset += 3;
-                }
-                toUpdate.add(o);
-                seen.add(o.Id);
-                currentTotal++;
-                if (isOmegaOpp) currentOmega++;
-                System.debug('  [2b TAKE] ' + o.Name + ' → CloseDate: ' + o.CloseDate);
-            }
-        } else {
-            System.debug('Step 2b — Skipped (total already at ' + currentTotal + '/' + minTotal + ')');
-        }
-
-        // 2c: Other stale open (before current month, outside previous quarter) if still under threshold
-        if (currentTotal < minTotal || currentOmega < minOmega) {
-            excludeIds = new List<Id>(seen);
-            List<Opportunity> staleOpenOther = [
-                SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
-                WHERE OwnerId = :demoOwnerId
-                  AND IsClosed = false AND CloseDate < :firstDayMonth AND (CloseDate < :firstDayLastQ OR CloseDate > :lastDayLastQ)
-                  AND Id NOT IN :excludeIds
-                ORDER BY CloseDate ASC LIMIT 10
-            ];
-            System.debug('Step 2c — Stale open outside prev quarter window: ' + staleOpenOther.size() + ' found');
-            for (Opportunity o : staleOpenOther) {
-                System.debug('  [2c candidate] ' + o.Name + ' | CloseDate: ' + o.CloseDate);
-            }
-            for (Opportunity o : staleOpenOther) {
-                if (currentTotal >= minTotal && currentOmega >= minOmega) break;
-                Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'));
-                o.CloseDate = isOmegaOpp ? lastDayMonth : firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
-                if (!isOmegaOpp) dayOffset += 3;
-                toUpdate.add(o);
-                seen.add(o.Id);
-                currentTotal++;
-                if (isOmegaOpp) currentOmega++;
-                System.debug('  [2c TAKE] ' + o.Name + ' → CloseDate: ' + o.CloseDate);
-            }
-        } else {
-            System.debug('Step 2c — Skipped (thresholds met)');
-        }
-    } else {
-        System.debug('Step 2 — Skipped (thresholds met after Step 1)');
     }
 
-    // STEP 3: Reopen closed non-Omega opps from recent quarters
+    // 2b: Non-Omega fill — spread across the rest of the month starting from tomorrow
     if (currentTotal < minTotal) {
         excludeIds = new List<Id>(seen);
-        Date cutoff = Date.today().addDays(-120);
+        List<Opportunity> staleOpen = [
+            SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
+            WHERE OwnerId = :demoOwnerId
+              AND IsClosed = false AND CloseDate < :firstDayMonth
+              AND Id NOT IN :excludeIds
+            ORDER BY CloseDate DESC LIMIT 15
+        ];
+        System.debug('Step 2b — Stale fill candidates: ' + staleOpen.size());
+        for (Opportunity o : staleOpen) {
+            if (currentTotal >= minTotal) break;
+            Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega'))
+                                 || (o.Name != null && o.Name.containsIgnoreCase('Omega'));
+            if (isOmegaOpp) {
+                o.CloseDate = lastDayMonth;
+                currentOmega++;
+            } else {
+                // Spread across the rest of the month from tomorrow — never immediately overdue
+                o.CloseDate = assignBase.addDays(Math.mod(dayOffset, assignWindow + 1));
+                dayOffset += 3;
+            }
+            toUpdate.add(o);
+            seen.add(o.Id);
+            currentTotal++;
+            System.debug('  [2b] Restored: ' + o.Name + ' → ' + o.CloseDate);
+        }
+    }
+
+    // STEP 3: Reopen closed non-Omega opps if still under threshold (last resort)
+    if (currentTotal < minTotal) {
+        excludeIds = new List<Id>(seen);
+        Date cutoff = Date.today().addDays(-180);
         List<Opportunity> closedOther = [
             SELECT Id, Name, StageName, CloseDate FROM Opportunity
             WHERE OwnerId = :demoOwnerId
@@ -198,31 +145,26 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
               AND Id NOT IN :excludeIds
             ORDER BY CloseDate DESC LIMIT 10
         ];
-        System.debug('Step 3 — Closed non-Omega (last 120 days, before current month): ' + closedOther.size() + ' found');
-        for (Opportunity o : closedOther) {
-            System.debug('  [3 candidate] ' + o.Name + ' | Stage: ' + o.StageName + ' | CloseDate: ' + o.CloseDate);
-        }
+        System.debug('Step 3 — Closed non-Omega (last 180 days): ' + closedOther.size() + ' found');
         for (Opportunity o : closedOther) {
             if (currentTotal >= minTotal) break;
             o.StageName = reopenStageOther;
-            o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+            o.CloseDate = assignBase.addDays(Math.mod(dayOffset, assignWindow + 1));
             dayOffset += 3;
             toUpdate.add(o);
             seen.add(o.Id);
             currentTotal++;
-            System.debug('  [3 TAKE] ' + o.Name + ' → Stage: ' + reopenStageOther + ', CloseDate: ' + o.CloseDate);
+            System.debug('  [step3] Reopened: ' + o.Name + ' → Discovery, ' + o.CloseDate);
         }
-    } else {
-        System.debug('Step 3 — Skipped (total already at ' + currentTotal + '/' + minTotal + ')');
     }
 
-    System.debug('--- Summary: toUpdate.size()=' + toUpdate.size() + ', final total=' + currentTotal + ', final Omega=' + currentOmega);
+    System.debug('Summary: updating ' + toUpdate.size() + ' opps → total=' + currentTotal + ', Omega=' + currentOmega);
 
     if (!toUpdate.isEmpty()) {
         update toUpdate;
-        System.debug('REMEDIATED — Updated ' + toUpdate.size() + ' opportunities.');
+        System.debug('REMEDIATED — ' + toUpdate.size() + ' opps moved to current quarter:');
         for (Opportunity o : toUpdate) {
-            System.debug('  > ' + o.Name + ' | Stage: ' + o.StageName + ' | CloseDate: ' + o.CloseDate);
+            System.debug('  ✓ ' + o.Name + ' | ' + o.StageName + ' | ' + o.CloseDate);
         }
     } else {
         System.debug('WARNING — Below threshold but no candidates found to move.');

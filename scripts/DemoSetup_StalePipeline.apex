@@ -1,5 +1,7 @@
 // Demo prep: Move Jennifer Hynes's current-quarter open opps to PREVIOUS quarter.
-// Run before the demo so the hygiene agent can "fix" them back to current quarter.
+// Omega opps get the LATEST dates (Dec 31, 30, 29...) sorted by Amount DESC so the
+// highest-value Omega opp (128K) is always first in EnsureCurrentMonthOpportunities'
+// ORDER BY CloseDate DESC restore query — guaranteed regardless of how many Omega opps exist.
 // Run: sf apex run --file scripts/DemoSetup_StalePipeline.apex --target-org <alias>
 
 Id jenniferId = '005Wt000004WHt3IAG';  // Jennifer Hynes
@@ -14,7 +16,7 @@ Date lastDayLastQ = firstDayThisQ.addDays(-1);
 Integer daysInLastQ = firstDayLastQ.daysBetween(lastDayLastQ);
 
 List<Opportunity> opps = [
-    SELECT Id, Name, CloseDate, NextStep, Account.Name
+    SELECT Id, Name, CloseDate, NextStep, Amount, Account.Name
     FROM Opportunity
     WHERE OwnerId = :jenniferId
       AND CloseDate >= :firstDayThisQ
@@ -27,9 +29,7 @@ if (opps.isEmpty()) {
     return;
 }
 
-// Separate Omega vs non-Omega. Omega opps get the LATEST dates in the previous quarter
-// (Dec 31, 30, 29...) so EnsureCurrentMonthOpportunities ORDER BY CloseDate DESC always
-// picks them up first in Step 2a — regardless of how many other overdue opps exist.
+// Separate Omega (by opp name OR account name) vs non-Omega
 List<Opportunity> omegaOpps = new List<Opportunity>();
 List<Opportunity> otherOpps = new List<Opportunity>();
 for (Opportunity o : opps) {
@@ -42,8 +42,23 @@ for (Opportunity o : opps) {
     }
 }
 
-// Non-Omega → early dates in previous quarter (first ~75% of Q4)
-Integer safeWindow = Math.max(daysInLastQ - 15, 0);  // Reserve last 15 days for Omega
+// Sort Omega opps by Amount DESC (bubble sort — anonymous Apex has no Comparator).
+// Highest-value opp (128K) ends up first → gets Dec 31 (latest date) → ORDER BY CloseDate DESC
+// in EnsureCurrentMonthOpportunities always restores the highest-value Omega opp first.
+for (Integer i = 0; i < omegaOpps.size() - 1; i++) {
+    for (Integer j = 0; j < omegaOpps.size() - 1 - i; j++) {
+        Decimal a1 = omegaOpps[j].Amount != null ? omegaOpps[j].Amount : 0;
+        Decimal a2 = omegaOpps[j+1].Amount != null ? omegaOpps[j+1].Amount : 0;
+        if (a1 < a2) {
+            Opportunity tmp = omegaOpps[j];
+            omegaOpps[j] = omegaOpps[j+1];
+            omegaOpps[j+1] = tmp;
+        }
+    }
+}
+
+// Non-Omega → early dates in previous quarter (reserve last 15 days for Omega)
+Integer safeWindow = Math.max(daysInLastQ - 15, 0);
 Integer dayOffset = 0;
 for (Opportunity o : otherOpps) {
     o.CloseDate = firstDayLastQ.addDays(Math.mod(dayOffset, safeWindow + 1));
@@ -51,7 +66,8 @@ for (Opportunity o : otherOpps) {
 }
 
 // Omega → late dates descending from end of previous quarter (Dec 31, Dec 30, Dec 29...)
-// Clear NextStep so Pipeline Management generates "Update Next Step?" on restore.
+// sorted by Amount DESC so 128K always gets Dec 31.
+// Clear NextStep so Pipeline Management generates "Update Next Step?" badge on restore.
 Integer omegaOffset = 0;
 for (Opportunity o : omegaOpps) {
     o.CloseDate = lastDayLastQ.addDays(-omegaOffset);  // Dec 31, Dec 30, Dec 29...
@@ -60,6 +76,9 @@ for (Opportunity o : omegaOpps) {
 }
 
 update opps;
-System.debug('Moved ' + opps.size() + ' opps (Jennifer Hynes) to previous quarter for demo.');
-System.debug('  Omega (' + omegaOpps.size() + '): late Q4 dates so restore always picks them first');
-System.debug('  Other (' + otherOpps.size() + '): early Q4 dates');
+System.debug('Moved ' + opps.size() + ' opps to prev quarter (' + firstDayLastQ + ' → ' + lastDayLastQ + ').');
+System.debug('  Omega (' + omegaOpps.size() + ') sorted by Amount DESC → late dates:');
+for (Opportunity o : omegaOpps) {
+    System.debug('    ' + o.Name + ' | $' + o.Amount + ' | CloseDate: ' + o.CloseDate);
+}
+System.debug('  Other (' + otherOpps.size() + ') → early dates (' + firstDayLastQ + ' + spread)');
