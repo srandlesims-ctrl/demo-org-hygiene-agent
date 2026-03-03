@@ -69,36 +69,62 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         }
     }
 
-    // STEP 2: Move stale open opps into current month. Prefer previous-quarter stale first
-    // (opps moved by DemoSetup_StalePipeline — including Omega 44k/128k) so they always come back.
+    // STEP 2: Move stale open opps into current month. Always restore Omega first by querying
+    // them explicitly — a general ORDER BY CloseDate ASC can skip Omega if 8+ earlier-dated
+    // opps fill the LIMIT before Omega (e.g. 12/30 Omega after 8 opps dated 12/5–12/21).
     if (currentTotal < minTotal || currentOmega < minOmega) {
-        excludeIds = new List<Id>(seen);
-        // 2a: Stale open in previous quarter (demo script’s opps) — oldest first
-        List<Opportunity> staleOpenLastQ = [
-            SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
-            WHERE OwnerId = :demoOwnerId
-              AND IsClosed = false AND CloseDate >= :firstDayLastQ AND CloseDate <= :lastDayLastQ
-              AND Id NOT IN :excludeIds
-            ORDER BY CloseDate ASC LIMIT 10
-        ];
-        for (Opportunity o : staleOpenLastQ) {
-            if (currentTotal >= minTotal && currentOmega >= minOmega) break;
-            Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'));
-            if (isOmegaOpp) {
-                // Set Omega close date to end of month so it's never immediately overdue.
-                // PM skips overdue opps with Days in Stage = 0 (no action to suggest).
-                // lastDayMonth is always in current month and always in the future for days 1-28.
+
+        // 2a: Omega opps from previous quarter — explicit query so they are ALWAYS restored
+        // regardless of how many other overdue opps exist with earlier close dates.
+        if (currentOmega < minOmega) {
+            excludeIds = new List<Id>(seen);
+            List<Opportunity> staleOmegaLastQ = [
+                SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
+                WHERE OwnerId = :demoOwnerId
+                  AND IsClosed = false AND CloseDate >= :firstDayLastQ AND CloseDate <= :lastDayLastQ
+                  AND (Account.Name LIKE :omegaPattern OR Name LIKE :omegaPattern)
+                  AND Id NOT IN :excludeIds
+                ORDER BY CloseDate DESC LIMIT 5
+            ];
+            for (Opportunity o : staleOmegaLastQ) {
+                if (currentOmega >= minOmega) break;
+                // End of month: ensures Omega is never overdue on restore (PM ignores Days Overdue > 0 + Days in Stage = 0)
                 o.CloseDate = lastDayMonth;
-            } else {
-                o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
-                dayOffset += 3;
+                toUpdate.add(o);
+                seen.add(o.Id);
+                currentTotal++;
+                currentOmega++;
+                System.debug(‘Restoring Omega (prev quarter): ‘ + o.Name);
             }
-            toUpdate.add(o);
-            seen.add(o.Id);
-            currentTotal++;
-            if (isOmegaOpp) currentOmega++;
         }
-        // 2b: Other stale open (before current month, not in last quarter) if still under threshold
+
+        // 2b: Non-Omega opps from previous quarter to fill total threshold
+        if (currentTotal < minTotal) {
+            excludeIds = new List<Id>(seen);
+            List<Opportunity> staleOpenLastQ = [
+                SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
+                WHERE OwnerId = :demoOwnerId
+                  AND IsClosed = false AND CloseDate >= :firstDayLastQ AND CloseDate <= :lastDayLastQ
+                  AND Id NOT IN :excludeIds
+                ORDER BY CloseDate ASC LIMIT 10
+            ];
+            for (Opportunity o : staleOpenLastQ) {
+                if (currentTotal >= minTotal) break;
+                Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase(‘Omega’)) || (o.Name != null && o.Name.containsIgnoreCase(‘Omega’));
+                if (isOmegaOpp) {
+                    o.CloseDate = lastDayMonth;
+                } else {
+                    o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+                    dayOffset += 3;
+                }
+                toUpdate.add(o);
+                seen.add(o.Id);
+                currentTotal++;
+                if (isOmegaOpp) currentOmega++;
+            }
+        }
+
+        // 2c: Other stale open (before current month, outside previous quarter) if still under threshold
         if (currentTotal < minTotal || currentOmega < minOmega) {
             excludeIds = new List<Id>(seen);
             List<Opportunity> staleOpenOther = [
@@ -110,12 +136,13 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
             ];
             for (Opportunity o : staleOpenOther) {
                 if (currentTotal >= minTotal && currentOmega >= minOmega) break;
-                o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
-                dayOffset += 3;
+                Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase(‘Omega’)) || (o.Name != null && o.Name.containsIgnoreCase(‘Omega’));
+                o.CloseDate = isOmegaOpp ? lastDayMonth : firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+                if (!isOmegaOpp) dayOffset += 3;
                 toUpdate.add(o);
                 seen.add(o.Id);
                 currentTotal++;
-                if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) currentOmega++;
+                if (isOmegaOpp) currentOmega++;
             }
         }
     }
