@@ -188,7 +188,13 @@ Then in Salesforce, log in as **Jennifer Hynes** and open **Sales → Opportunit
 npm run demo:after
 ```
 
-This runs `npm start` (remediates: moves opps back to current quarter, adds Tasks and Notes, then runs the Pipeline Management flow) followed immediately by an explicit second flow run for a fresh signal pass. Refresh **Pipeline Inspection** (same filters). Show that **This Quarter** now has 8+ opps including Omega (44k and 128k) with Tasks, Notes, and Agent Activity. Insights may take 2–5 minutes to appear — refresh once more after that.
+Runs four Apex scripts in sequence — always, unconditionally:
+1. `EnsureCurrentMonthOpportunities.apex` — moves opps back to current month (Omega first)
+2. `EnsureOppActivity.apex` — adds Tasks to every current-quarter opp that needs them
+3. `EnsureOppNotes.apex` — adds Enhanced Notes to every current-quarter opp that needs them
+4. `RunPipelineManagementFlow.apex` — triggers Pipeline Management insights with fresh Tasks + Notes
+
+Refresh **Pipeline Inspection** (same filters). Show that **This Quarter** now has 8+ opps including Omega (44k and 128k) with Tasks, Notes, and Agent Activity badges. Insights may take 2–5 minutes to appear — refresh once more after that.
 
 **Full automated reset (one command, no steps)**
 
