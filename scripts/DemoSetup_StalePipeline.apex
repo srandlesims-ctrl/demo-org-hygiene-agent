@@ -13,7 +13,7 @@ Date firstDayLastQ = firstDayThisQ.addMonths(-3);
 Date lastDayLastQ = firstDayThisQ.addDays(-1);
 
 List<Opportunity> opps = [
-    SELECT Id, Name, CloseDate
+    SELECT Id, Name, CloseDate, NextStep
     FROM Opportunity
     WHERE OwnerId = :jenniferId
       AND CloseDate >= :firstDayThisQ
@@ -31,6 +31,11 @@ Integer daysInLastQ = firstDayLastQ.daysBetween(lastDayLastQ);
 for (Opportunity o : opps) {
     o.CloseDate = firstDayLastQ.addDays(Math.mod(dayOffset, daysInLastQ + 1));
     dayOffset += 5;
+    // Clear NextStep on Omega opps so Pipeline Management generates "Update Next Step?"
+    // when demo:after restores them. Other opps keep their NextStep (PM still badges them).
+    if (o.Name != null && o.Name.containsIgnoreCase('Omega')) {
+        o.NextStep = null;
+    }
 }
 update opps;
 System.debug('Moved ' + opps.size() + ' opps (Jennifer Hynes) from current quarter to previous quarter for demo.');
