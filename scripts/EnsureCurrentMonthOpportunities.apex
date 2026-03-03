@@ -59,8 +59,9 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         for (Opportunity o : closedOmega) {
             if (currentOmega >= minOmega && currentTotal >= minTotal) break;
             o.StageName = reopenStageOmega;
-            o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
-            dayOffset += 4;
+            // End of month: ensures Omega is never immediately overdue after reactivation.
+            // PM won't badge opps that are overdue with Days in Stage = 0.
+            o.CloseDate = lastDayMonth;
             toUpdate.add(o);
             seen.add(o.Id);
             currentOmega++;
@@ -82,12 +83,20 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         ];
         for (Opportunity o : staleOpenLastQ) {
             if (currentTotal >= minTotal && currentOmega >= minOmega) break;
-            o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
-            dayOffset += 3;
+            Boolean isOmegaOpp = (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'));
+            if (isOmegaOpp) {
+                // Set Omega close date to end of month so it's never immediately overdue.
+                // PM skips overdue opps with Days in Stage = 0 (no action to suggest).
+                // lastDayMonth is always in current month and always in the future for days 1-28.
+                o.CloseDate = lastDayMonth;
+            } else {
+                o.CloseDate = firstDayMonth.addDays(Math.mod(dayOffset, maxDayOffset + 1));
+                dayOffset += 3;
+            }
             toUpdate.add(o);
             seen.add(o.Id);
             currentTotal++;
-            if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) currentOmega++;
+            if (isOmegaOpp) currentOmega++;
         }
         // 2b: Other stale open (before current month, not in last quarter) if still under threshold
         if (currentTotal < minTotal || currentOmega < minOmega) {
