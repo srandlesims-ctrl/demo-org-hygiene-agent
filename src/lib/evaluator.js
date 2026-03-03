@@ -10,6 +10,9 @@
  * @property {boolean|null} omegaFlagshipOpen
  * @property {number|null} eventsUpcoming
  * @property {boolean|null} activityOmegaOk
+ * @property {number|null} openCurrentQuarterTotal
+ * @property {number|null} openCurrentQuarterWithActivity
+ * @property {boolean|null} agentActivityReady
  * @property {string[]} errors
  */
 
@@ -36,6 +39,11 @@ export function evaluate(result, thresholds) {
     omegaFlagshipOpen: result.omegaFlagshipOpen,
     eventsUpcoming: result.eventsUpcoming,
     activityOmegaOk: result.activityOmegaOk,
+    openCurrentQuarterTotal: result.openCurrentQuarterTotal,
+    openCurrentQuarterWithActivity: result.openCurrentQuarterWithActivity,
+    agentActivityReady: result.agentActivityReady,
+    _monthBounds: result._monthBounds,
+    _quarterBounds: result._quarterBounds,
   };
 
   if (result.errors.length > 0) {
@@ -54,7 +62,7 @@ export function evaluate(result, thresholds) {
   }
 
   if (result.omegaFlagshipOpen === false) {
-    failures.push('Omega flagship opp ("Omega, Inc - New Business") not open in current month');
+    failures.push('Omega flagship opp ("Omega, Inc. - New Business") not open in current month');
   }
 
   const minEvents = thresholds?.events?.minCount ?? 5;
@@ -64,6 +72,19 @@ export function evaluate(result, thresholds) {
 
   if (result.activityOmegaOk === false) {
     failures.push('Some open Omega opps have no recent activity (last 30 days)');
+  }
+
+  const requireAllForAgent = thresholds?.activity?.requireAllCurrentQuarterForAgent !== false;
+  if (result.agentActivityReady === false) {
+    const total = result.openCurrentQuarterTotal ?? 0;
+    const withActivity = result.openCurrentQuarterWithActivity ?? 0;
+    const minOmega = thresholds?.opportunities?.minOmega ?? 2;
+    const relaxedPass = !requireAllForAgent && withActivity >= minOmega;
+    if (!relaxedPass) {
+      failures.push(
+        `Pipeline Management Agent Activity: ${withActivity}/${total} open current-quarter opps have recent activity${requireAllForAgent ? ' (all need activity for insights)' : ` (at least ${minOmega} required)`}`
+      );
+    }
   }
 
   return {

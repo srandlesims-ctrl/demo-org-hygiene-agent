@@ -1,12 +1,13 @@
 # Demo Org Hygiene Agent
 
-A lightweight automated agent that monitors and maintains Salesforce demo org (SDO) environments used across **AMER**, **EMEA**, and **APAC** events. It runs on a schedule (e.g. every few days), checks each org for current, realistic demo data, flags issues, and optionally auto-remediates stale or missing data.
+A lightweight automated agent that monitors and maintains Salesforce demo org (SDO) environments used for **events, demo booth, and customer deal cycles**. It runs on a schedule (every 3 days in GitHub Actions), checks each org for current, realistic demo data, flags issues, and auto-remediates so the org has everything it needs whenever someone uses it.
 
 ## Goals
 
-- Ensure every SDO has **current-quarter Omega pipeline** (key demo opps open and in active stages), **upcoming calendar events**, and **recent activity** on Omega opps
+- Ensure every SDO has **current-quarter pipeline** (open opps owned by the demo POV user, e.g. Jennifer Hynes), **upcoming calendar events**, and **recent activity** (Tasks + Enhanced Notes) on those opps
+- Populate **Pipeline Management Agent Activity** for all current-quarter demo POV opps (Tasks, Notes, and flow run so Pipeline Inspection shows insights)
 - Surface org health status via **Slack** and **console** report
-- Auto-fix by **moving** existing opportunities into the current month (Omega-first), adding events, and adding Tasks on Omega opps when needed — **no creating new opps**
+- Auto-fix by **moving** existing opportunities into the current month (Omega-first), adding events, Tasks, Notes, and running the Pipeline Management flow — **no creating new opps**
 - Support **multiple orgs** across regions without manual logins (after one-time auth)
 
 ## Architecture
@@ -19,8 +20,8 @@ A lightweight automated agent that monitors and maintains Salesforce demo org (S
 | **Hygiene check engine** | SOQL: pipeline count, Omega count, flagship opp, events, Omega activity |
 | **Evaluator** | Pass/fail vs thresholds (fails if Omega is below threshold even when total passes) |
 | **Reporter** | Console + optional Slack webhook (Pipeline, Omega, Events, Activity) |
-| **Auto-remediation** | Apex: move/reopen opps (Omega-first), create events, add Tasks on Omega opps |
-| **Scheduler** | GitHub Actions cron (or local cron) |
+| **Auto-remediation** | Apex: move/reopen opps (Omega-first), create events, add Tasks and Enhanced Notes on open current-quarter opps; then run Pipeline Management flow so Agent Activity is populated |
+| **Scheduler** | GitHub Actions: every 3 days (check + remediate + Pipeline Management flow) |
 
 ## Prerequisites
 
@@ -78,6 +79,8 @@ npm run remediate
 
 ### Scheduled runs in GitHub
 
+The workflow runs **every 3 days** at 06:00 UTC: (1) `npm start` (check + remediate — opps, events, Tasks, Notes), (2) `RunPipelineManagementFlow.apex` so Agent Activity is refreshed for all current-quarter demo POV opps. The demo org stays ready for events, booth, and deal cycles.
+
 1. **Create a GitHub repo** (if you don’t have one)  
    On GitHub: **Repositories → New** (or “Create repository”). Name it e.g. `demo-org-hygiene-agent`.
 
@@ -129,13 +132,51 @@ When an org is **below** the configured thresholds:
 
 1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Priority: (1) reactivate closed Omega opps → stage `Negotiation/Review`, (2) move stale open opps into current month, (3) reopen closed non-Omega from last 120 days → stage `Qualification`.
 2. **Events** – `scripts/EnsureUpcomingEvents.apex` creates Events in the next 14 days (Omega-themed subjects when possible).
-3. **Activity** – `scripts/EnsureOppActivity.apex` adds completed Tasks on open Omega opps that have no activity in the last 30 days.
+3. **Activity** – `scripts/EnsureOppActivity.apex` adds completed Tasks on open current-quarter opps (demo POV owner) that have no activity in the last 30 days.
+4. **Notes** – `scripts/EnsureOppNotes.apex` adds one Enhanced Note (Lightning Notes) per open current-quarter opp that doesn’t already have a recent note, so Pipeline Management has Notes + Tasks for insights.
 
 Remediation runs only when you use `npm start` (or `npm run remediate`). Use `npm run check` in CI to avoid creating data automatically.
 
+## Demo setup (before showing the agent)
+
+To show the agent "fixing" the org, create a messy state first (run against your SDO alias, e.g. `sdo-amer`):
+
+```bash
+# 1) Move Jennifer Hynes's current-quarter open opps to previous quarter (stale)
+sf apex run --file scripts/DemoSetup_StalePipeline.apex --target-org sdo-amer
+
+# 2) Close the Omega 128K deal so the agent can reactivate it
+sf apex run --file scripts/DemoSetup_CloseOmega128K.apex --target-org sdo-amer
+```
+
+Then run the agent: `npm start` (or `npm run check` then `npm run remediate`). The agent will move those opps back to the current month and reopen the Omega deal.
+
+**Note:** Jennifer Hynes's User Id is hardcoded in `DemoSetup_StalePipeline.apex` (`005Wt000004WHt3IAG`). If your SDO uses a different Id, edit that script.
+
+## Run Pipeline Management flow
+
+The **Pipeline Management** flow (same as clicking "Get Pipeline Management Insights") runs **automatically** (1) after remediation when activity or notes were added, and (2) in the GitHub Actions scheduled job every 3 days. It targets **all open current-quarter opportunities** for the demo POV user (e.g. Jennifer Hynes), so Agent Activity is populated for the same opps that have Tasks and Notes.
+
+To run it **manually** from the command line:
+
+1. **Prerequisites (required for Agent Activity insights):**
+   - **Einstein Activity Capture (EAC)** and **Einstein Conversation Insights (ECI)** must be enabled. Pipeline Management uses this data to generate insights; without them, the feature cannot work as designed.
+   - Pipeline Management must be set up (Agentforce Pipeline Management on, agent created, permission set assigned, flow active). See the Pipeline Management SDO demo guide for setup.
+
+2. **Data on opportunities:** The agent suggests next steps by analyzing **recent activity** on the opportunity (emails, calls, notes, tasks). The flow runs regardless, but **Agent Activity will stay "None"** for opps with no recent activity to analyze. The hygiene agent **checks and updates** this for you: it ensures every open opportunity in the **current quarter** (same scope as Pipeline Inspection "This Quarter") has at least one Task in the last 30 days. Run `npm start` or `npm run remediate` to add Tasks where missing; the check appears as "Current quarter (agent-ready): X/Y opps with recent activity" in the report.
+
+3. **Run the flow** (no button click):
+   ```bash
+   sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer
+   ```
+
+4. **Confirm the flow API name** if you get a compile error: In Setup go to **Flows**, open **SDO Process Field Updates Autolaunch**, and check the **API Name**. If it differs (e.g. a namespace prefix), update the class name in `scripts/RunPipelineManagementFlow.apex` to match (e.g. `Flow.Interview.YourActualApiName`).
+
+5. **Check results**: Go to **Opportunities > Pipeline Inspection**, filter by Close Date (e.g. This Quarter). In the **Agent Activity** column, look for **Need Review**; open an item to see the insight and Accept / Edit / Decline. Insights can take a few minutes to appear after the flow runs.
+
 ## Config reference
 
-- **orgs.json** – `alias` (required), `region`, `description`
+- **orgs.json** – `alias` (required), `region`, `description`, `demoOwnerId` (optional) — when set, all pipeline and activity checks and remediation scope to opportunities owned by this User Id (demo POV, e.g. Jennifer Hynes). Apex scripts use the same Id; if your SDO uses a different user, set `demoOwnerId` in orgs.json and update the `demoOwnerId` constant in each script under `scripts/`.
 - **thresholds.json** – `opportunities.minCurrentMonth`, `opportunities.minOmega`, `opportunities.omegaAccountPattern`, `opportunities.reopenStageOmega` / `reopenStageOther`, `events.minUpcomingDays`, `events.minCount`, `activity.minRecentDays`, `activity.omegaOnly`
 - **.env** – `SLACK_WEBHOOK_URL`, optional `ORG_CONFIG_PATH`, `THRESHOLDS_PATH`
 

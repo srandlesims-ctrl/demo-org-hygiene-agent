@@ -17,10 +17,18 @@ export function formatOrgConsole(evalResult, region = '') {
     out += `\n  - ${evalResult.failures.join('\n  - ')}`;
   }
   if (evalResult.details) {
+    if (evalResult.details._monthBounds) {
+      out += `\n  CloseDate range: ${evalResult.details._monthBounds.firstDay} to ${evalResult.details._monthBounds.lastDay}`;
+    }
     out += `\n  Pipeline (current month): ${evalResult.details.opportunitiesCurrentMonth ?? 'N/A'}`;
     out += `\n  Omega opps: ${evalResult.details.opportunitiesOmegaCurrentMonth ?? 'N/A'}`;
     out += `\n  Events (upcoming): ${evalResult.details.eventsUpcoming ?? 'N/A'}`;
     out += `\n  Activity (Omega): ${evalResult.details.activityOmegaOk === true ? 'pass' : evalResult.details.activityOmegaOk === false ? 'fail' : 'N/A'}`;
+    const total = evalResult.details.openCurrentQuarterTotal;
+    const withAct = evalResult.details.openCurrentQuarterWithActivity;
+    if (total != null && withAct != null) {
+      out += `\n  Current quarter (agent-ready): ${withAct}/${total} opps with recent activity`;
+    }
   }
   return out;
 }
@@ -78,7 +86,11 @@ export function reportSlack(results, webhookUrl, orgConfig) {
     if (!r.pass && r.failures.length) {
       text += r.failures.map((f) => `  • ${f}`).join('\n');
     } else {
-      text += `  Pipeline: ${r.details?.opportunitiesCurrentMonth ?? 'N/A'} | Omega: ${r.details?.opportunitiesOmegaCurrentMonth ?? 'N/A'} | Events: ${r.details?.eventsUpcoming ?? 'N/A'} | Activity: ${r.details?.activityOmegaOk === true ? 'pass' : r.details?.activityOmegaOk === false ? 'fail' : 'N/A'}`;
+      const aq =
+        r.details?.openCurrentQuarterWithActivity != null && r.details?.openCurrentQuarterTotal != null
+          ? `${r.details.openCurrentQuarterWithActivity}/${r.details.openCurrentQuarterTotal} qtr`
+          : 'N/A';
+      text += `  Pipeline: ${r.details?.opportunitiesCurrentMonth ?? 'N/A'} | Omega: ${r.details?.opportunitiesOmegaCurrentMonth ?? 'N/A'} | Events: ${r.details?.eventsUpcoming ?? 'N/A'} | Activity: ${r.details?.activityOmegaOk === true ? 'pass' : r.details?.activityOmegaOk === false ? 'fail' : 'N/A'} | Agent-ready: ${aq}`;
     }
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text } });
   });

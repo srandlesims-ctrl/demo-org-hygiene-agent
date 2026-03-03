@@ -56,7 +56,7 @@ async function main() {
       continue;
     }
 
-    const checkResult = await runHygieneChecks(alias, thresholds);
+    const checkResult = await runHygieneChecks(alias, thresholds, org);
     const evalResult = evaluate(checkResult, thresholds);
     evalResult._thresholds = thresholds;
     results.push(evalResult);
@@ -65,7 +65,7 @@ async function main() {
       const rem = await remediate(alias, evalResult);
       if (rem.errors.length) {
         evalResult.failures.push(`Remediation: ${rem.errors.join('; ')}`);
-      } else if (rem.opportunitiesCreated || rem.eventsCreated || rem.activityCreated) {
+      } else if (rem.opportunitiesCreated || rem.eventsCreated || rem.activityCreated || rem.notesCreated || rem.flowStarted) {
         evalResult.failures.push('Remediation ran; re-run check to verify.');
       }
     }

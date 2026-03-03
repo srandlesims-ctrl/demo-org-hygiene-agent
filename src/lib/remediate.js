@@ -42,11 +42,15 @@ export async function remediate(orgAlias, evalResult) {
   let opportunitiesCreated = 0;
   let eventsCreated = 0;
   let activityCreated = 0;
+  let notesCreated = 0;
+  let flowStarted = 0;
 
   const scriptDir = join(__dirname, '..', '..', 'scripts');
   const oppScript = join(scriptDir, 'EnsureCurrentMonthOpportunities.apex');
   const eventScript = join(scriptDir, 'EnsureUpcomingEvents.apex');
   const activityScript = join(scriptDir, 'EnsureOppActivity.apex');
+  const notesScript = join(scriptDir, 'EnsureOppNotes.apex');
+  const flowScript = join(scriptDir, 'RunPipelineManagementFlow.apex');
 
   const minOpps = evalResult._thresholds?.opportunities?.minCurrentMonth ?? 3;
   const minOmega = evalResult._thresholds?.opportunities?.minOmega ?? 2;
@@ -59,6 +63,9 @@ export async function remediate(orgAlias, evalResult) {
       const res = runApexScript(orgAlias, oppScript);
       if (res.ok) opportunitiesCreated = 1;
       else errors.push(`Opportunities: ${res.error}`);
+      if (process.env.DEBUG_HYGIENE && !res.ok && res.error) {
+        console.error('[debug] Opportunities remediation error:', res.error);
+      }
     }
   } catch (e) {
     errors.push(`Opportunities remediation: ${e.message}`);
@@ -74,8 +81,12 @@ export async function remediate(orgAlias, evalResult) {
     errors.push(`Events remediation: ${e.message}`);
   }
 
+  const needActivityRemediation =
+    evalResult.details?.activityOmegaOk === false || evalResult.details?.agentActivityReady === false;
+  const needNotesRemediation =
+    evalResult.details?.activityOmegaOk === false || evalResult.details?.agentActivityReady === false;
   try {
-    if (evalResult.details?.activityOmegaOk === false && existsSync(activityScript)) {
+    if (needActivityRemediation && existsSync(activityScript)) {
       const res = runApexScript(orgAlias, activityScript);
       if (res.ok) activityCreated = 1;
       else errors.push(`Activity: ${res.error}`);
@@ -84,5 +95,27 @@ export async function remediate(orgAlias, evalResult) {
     errors.push(`Activity remediation: ${e.message}`);
   }
 
-  return { opportunitiesCreated, eventsCreated, activityCreated, errors };
+  try {
+    if (needNotesRemediation && existsSync(notesScript)) {
+      const res = runApexScript(orgAlias, notesScript);
+      if (res.ok) notesCreated = 1;
+      else errors.push(`Notes: ${res.error}`);
+    }
+  } catch (e) {
+    errors.push(`Notes remediation: ${e.message}`);
+  }
+
+  // Run Pipeline Management flow so Agent Activity is populated for all current-quarter demo POV opps
+  // (after we ensured Tasks + Notes, or when we have open opps so scheduled runs refresh Agent Activity)
+  try {
+    if (existsSync(flowScript) && (activityCreated || notesCreated || needOppRemediation || needActivityRemediation)) {
+      const res = runApexScript(orgAlias, flowScript);
+      if (res.ok) flowStarted = 1;
+      else errors.push(`Pipeline Management flow: ${res.error}`);
+    }
+  } catch (e) {
+    errors.push(`Pipeline Management flow: ${e.message}`);
+  }
+
+  return { opportunitiesCreated, eventsCreated, activityCreated, notesCreated, flowStarted, errors };
 }

@@ -1,28 +1,31 @@
 // Demo Org Hygiene Agent — Opportunity Remediation
-// Moves existing opportunities into current month. Prioritizes Omega account.
-// Does NOT create new records.
+// Moves existing opportunities into current month for demo POV owner. Prioritizes Omega. Does NOT create new records.
 // Run via: sf apex run --file scripts/EnsureCurrentMonthOpportunities.apex --target-org <alias>
 
+Id demoOwnerId = '005Wt000004WHt3IAG';  // Jennifer Hynes — demo POV for SDO
 Integer minTotal = 8;
 Integer minOmega = 2;
 String omegaPattern = '%Omega%';
 String reopenStageOmega = 'Negotiation';
 String reopenStageOther = 'Discovery';
 
-Date firstDayMonth = Date.today().toStartOfMonth();
+// Use UTC for "current month" so Apex matches the Node.js check (which uses UTC)
+Date todayUtc = Datetime.now().dateGmt();
+Date firstDayMonth = Date.newInstance(todayUtc.year(), todayUtc.month(), 1);
 Date lastDayMonth = firstDayMonth.addMonths(1).addDays(-1);
 Integer maxDayOffset = firstDayMonth.daysBetween(lastDayMonth);
 
-// --- Count current state ---
+// --- Count current state (demo POV owner only) ---
 List<Opportunity> currentOpps = [
     SELECT Id, Name, Account.Name FROM Opportunity
-    WHERE CloseDate >= :firstDayMonth AND CloseDate <= :lastDayMonth AND IsClosed = false
+    WHERE OwnerId = :demoOwnerId
+      AND CloseDate >= :firstDayMonth AND CloseDate <= :lastDayMonth AND IsClosed = false
 ];
 Integer currentTotal = currentOpps.size();
 
 Integer currentOmega = 0;
 for (Opportunity o : currentOpps) {
-    if (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) {
+    if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) {
         currentOmega++;
     }
 }
@@ -39,12 +42,13 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
     Integer dayOffset = 0;
     List<Id> excludeIds = new List<Id>(seen);
 
-    // STEP 1: Reactivate closed Omega opps
+    // STEP 1: Reactivate closed Omega opps (demo POV owner only)
     if (currentOmega < minOmega) {
         List<Opportunity> closedOmega = [
             SELECT Id, Name, StageName, CloseDate, Amount FROM Opportunity
-            WHERE Account.Name LIKE :omegaPattern AND IsClosed = true
-            AND Id NOT IN :excludeIds
+            WHERE OwnerId = :demoOwnerId
+              AND (Account.Name LIKE :omegaPattern OR Name LIKE :omegaPattern) AND IsClosed = true
+              AND Id NOT IN :excludeIds
             ORDER BY CloseDate DESC LIMIT 5
         ];
         for (Opportunity o : closedOmega) {
@@ -64,8 +68,9 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         excludeIds = new List<Id>(seen);
         List<Opportunity> staleOpen = [
             SELECT Id, Name, StageName, CloseDate, Account.Name FROM Opportunity
-            WHERE IsClosed = false AND CloseDate < :firstDayMonth
-            AND Id NOT IN :excludeIds
+            WHERE OwnerId = :demoOwnerId
+              AND IsClosed = false AND CloseDate < :firstDayMonth
+              AND Id NOT IN :excludeIds
             ORDER BY CloseDate DESC LIMIT 10
         ];
         for (Opportunity o : staleOpen) {
@@ -75,7 +80,7 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
             toUpdate.add(o);
             seen.add(o.Id);
             currentTotal++;
-            if (o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) currentOmega++;
+            if ((o.Account != null && o.Account.Name != null && o.Account.Name.containsIgnoreCase('Omega')) || (o.Name != null && o.Name.containsIgnoreCase('Omega'))) currentOmega++;
         }
     }
 
@@ -85,8 +90,9 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         Date cutoff = Date.today().addDays(-120);
         List<Opportunity> closedOther = [
             SELECT Id, Name, StageName, CloseDate FROM Opportunity
-            WHERE IsClosed = true AND CloseDate >= :cutoff AND CloseDate < :firstDayMonth
-            AND Id NOT IN :excludeIds
+            WHERE OwnerId = :demoOwnerId
+              AND IsClosed = true AND CloseDate >= :cutoff AND CloseDate < :firstDayMonth
+              AND Id NOT IN :excludeIds
             ORDER BY CloseDate DESC LIMIT 10
         ];
         for (Opportunity o : closedOther) {

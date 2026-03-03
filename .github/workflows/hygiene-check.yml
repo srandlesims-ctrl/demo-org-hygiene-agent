@@ -1,8 +1,9 @@
 # Demo Org Hygiene Agent - scheduled run every 3 days
-# Use this file when your GitHub repo is the demo-org-hygiene-agent folder only.
-# For scheduled runs you must add secret SF_AUTH_URL (see README).
+# Ensures the demo org has pipeline, events, activity, notes, and Pipeline Management Agent Activity
+# so it's ready for events, demo booth, and customer deal cycles.
+# Secrets: SF_AUTH_URL (required for scheduled run), optional SLACK_WEBHOOK_URL.
 
-name: Demo Org Hygiene Check
+name: Demo Org Hygiene
 
 on:
   schedule:
@@ -36,11 +37,14 @@ jobs:
             echo "SF_AUTH_URL not set; skipping auth (check will report Auth failed for orgs)"
             exit 0
           fi
-          # --sfdx-url-stdin must be the last flag (CLI reads URL from stdin after it)
           echo "$SF_AUTH_URL" | sf org login sfdx-url --alias sdo-amer --set-default --sfdx-url-stdin
 
-      - name: Run hygiene check
+      - name: Run hygiene (check + remediate)
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: npm run check
+        run: npm start
+        continue-on-error: true
+
+      - name: Run Pipeline Management flow
+        run: sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer
         continue-on-error: true

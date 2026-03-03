@@ -1,6 +1,11 @@
 {
   "orgs": [
-    { "alias": "sdo-amer", "region": "AMER", "description": "Americas demo org for events" }
+    {
+      "alias": "sdo-amer",
+      "region": "AMER",
+      "description": "Americas demo org for events",
+      "demoOwnerId": "005Wt000004WHt3IAG"
+    }
   ],
-  "_comment": "Add sdo-emea, sdo-apac (and run sf alias set / sf org login) when those orgs are ready."
+  "_comment": "demoOwnerId = User Id for demo POV (e.g. Jennifer Hynes). All pipeline/activity checks and remediation scope to this owner. Add sdo-emea, sdo-apac when ready."
 }

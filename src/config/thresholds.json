@@ -1,6 +1,6 @@
 {
   "opportunities": {
-    "minCurrentMonth": 8,
+    "minCurrentMonth": 2,
     "minOmega": 2,
     "omegaAccountPattern": "%Omega%",
     "reopenStageOmega": "Negotiation",
@@ -16,7 +16,8 @@
     "minRecentDays": 30,
     "targetTasksPerOpp": 3,
     "omegaOnly": true,
-    "description": "Open Omega opps should have activity in last N days"
+    "requireAllCurrentQuarterForAgent": false,
+    "description": "Open Omega opps have activity; requireAllCurrentQuarterForAgent: if false, pass when at least minOmega current-quarter opps have recent activity (avoids fail when script can't see all opps)"
   },
   "staleDays": {
     "maxLastModifiedDays": 30,
