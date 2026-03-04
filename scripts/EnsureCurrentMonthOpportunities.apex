@@ -5,8 +5,8 @@
 // Run via: sf apex run --file scripts/EnsureCurrentMonthOpportunities.apex --target-org <alias>
 
 Id demoOwnerId = '005Wt000004WHt3IAG';  // Jennifer Hynes — demo POV for SDO
-Integer minTotal = 8;    // Opps to restore to current quarter (focused pipeline for demo)
-Integer minOmega = 2;    // Always restore at least 2 Omega opps (128K is the hero)
+Integer minTotal = 10;   // Opps to restore — buffer above the 8-opp scheduler trigger threshold
+Integer minOmega = 2;    // Minimum Omega for pass check; Step 2a restores ALL Omega found (see below)
 String omegaPattern = '%Omega%';
 String reopenStageOmega = 'Negotiation';
 String reopenStageOther = 'Discovery';
@@ -94,7 +94,11 @@ if (currentTotal >= minTotal && currentOmega >= minOmega) {
         ];
         System.debug('Step 2a — Stale Omega opps found: ' + staleOmega.size());
         for (Opportunity o : staleOmega) {
-            if (currentOmega >= minOmega) break;
+            // Take ALL Omega opps up to total budget — do NOT break at minOmega=2.
+            // This ensures every Omega opp (including 128K wherever it landed from demo:before)
+            // gets moved back to current quarter so the NEXT demo:before can sort them all
+            // correctly by Amount DESC, permanently fixing the rotation.
+            if (currentTotal >= minTotal) break;
             o.CloseDate = lastDayMonth;  // End of month: PM generates "Update Next Step?" badge
             toUpdate.add(o);
             seen.add(o.Id);

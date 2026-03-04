@@ -155,7 +155,9 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
       return (sub?.totalSize ?? sub?.records?.length ?? 0) > 0;
     };
     const withActivity = (activityResultOmega.records ?? []).filter(hasTasks).length;
-    results.activityOmegaOk = results.opportunitiesOmegaCurrentMonth === 0 || withActivity >= results.opportunitiesOmegaCurrentMonth;
+    // Note: === 0 would be vacuously true (no Omega opps → activity trivially "ok"),
+    // masking a missing-pipeline problem. Require opps to exist AND all have activity.
+    results.activityOmegaOk = results.opportunitiesOmegaCurrentMonth > 0 && withActivity >= results.opportunitiesOmegaCurrentMonth;
   }
 
   // Agent Activity readiness: all open opps in current quarter (parent-child query for Tasks)
@@ -177,8 +179,11 @@ export async function runHygieneChecks(orgAlias, thresholds, org = {}) {
     };
     const withActivity = (quarterWithActivityResult.records ?? []).filter(hasTasks).length;
     results.openCurrentQuarterWithActivity = withActivity;
+    // Note: === 0 would be vacuously true (empty pipeline → activity trivially "ready"),
+    // causing the scheduler to skip EnsureOppActivity/Notes after EnsureCurrentMonthOpportunities
+    // restores opps. Require opps to exist AND all have activity before marking ready.
     results.agentActivityReady =
-      results.openCurrentQuarterTotal === 0 || withActivity >= results.openCurrentQuarterTotal;
+      results.openCurrentQuarterTotal > 0 && withActivity >= results.openCurrentQuarterTotal;
   }
 
   return results;
