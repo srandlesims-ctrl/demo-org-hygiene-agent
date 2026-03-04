@@ -1,234 +1,215 @@
 # Demo Org Hygiene Agent
 
-A lightweight automated agent that monitors and maintains Salesforce demo org (SDO) environments used for **events, demo booth, and customer deal cycles**. It runs on a schedule (every 3 days in GitHub Actions), checks each org for current, realistic demo data, flags issues, and auto-remediates so the org has everything it needs whenever someone uses it.
+An autonomous agent that keeps your Salesforce SDO ready to demo — no manual resets needed. It runs every 3 days via GitHub Actions, checks the org for stale data, and self-heals: moving opps back to the current quarter, adding activity, and triggering Pipeline Management insights.
 
-## Goals
+> **The meta-story:** You built an agent to maintain the org you use to demo agents. 🤖
 
-- Ensure every SDO has **current-quarter pipeline** (open opps owned by the demo POV user, e.g. Jennifer Hynes), **upcoming calendar events**, and **recent activity** (Tasks + Enhanced Notes) on those opps
-- Populate **Pipeline Management Agent Activity** for all current-quarter demo POV opps (Tasks, Notes, and flow run so Pipeline Inspection shows insights)
-- Surface org health status via **Slack** and **console** report
-- Auto-fix by **moving** existing opportunities into the current month (Omega-first), adding events, Tasks, Notes, and running the Pipeline Management flow — **no creating new opps**
-- Support **multiple orgs** across regions without manual logins (after one-time auth)
+---
 
-## Architecture
+## Quick Start
 
-| Component | Description |
-|-----------|-------------|
-| **Org config registry** | `src/config/orgs.json` – list of org aliases and regions |
-| **Thresholds** | `src/config/thresholds.json` – opportunities (total + Omega), events, activity |
-| **Auth manager** | Uses Salesforce CLI (`sf`) – orgs must be pre-authorized |
-| **Hygiene check engine** | SOQL: pipeline count, Omega count, flagship opp, events, Omega activity |
-| **Evaluator** | Pass/fail vs thresholds (fails if Omega is below threshold even when total passes) |
-| **Reporter** | Console + optional Slack webhook (Pipeline, Omega, Events, Activity) |
-| **Auto-remediation** | Apex: move/reopen opps (Omega-first), create events, add Tasks and Enhanced Notes on open current-quarter opps; then run Pipeline Management flow so Agent Activity is populated |
-| **Scheduler** | GitHub Actions: every 3 days (check + remediate + Pipeline Management flow) |
+```bash
+# 1. Clone and install
+git clone https://github.com/srandlesims-ctrl/demo-org-hygiene-agent
+cd demo-org-hygiene-agent
+npm install
 
-## Prerequisites
+# 2. Authenticate to your SDO
+sf org login web --alias sdo-amer --instance-url https://login.salesforce.com
 
-- **Node.js** 18+
-- **Salesforce CLI** (`sf`) installed and authenticated for each SDO
-- (Optional) **Slack** incoming webhook URL for notifications
+# 3. Run the agent
+npm start
+```
+
+That's it. The agent checks the org, reports what it found, and fixes anything below threshold.
+
+---
+
+## Demo Commands
+
+Use these when showing the agent live to a customer or team.
+
+```bash
+npm run demo:before   # Stage the "before" — moves Jennifer's opps to last quarter (empty pipeline)
+npm run demo:after    # Restore everything — 10 opps, Tasks, Notes, Pipeline Management flow
+npm run demo          # Both in one command (silent reset before the audience watches)
+npm run demo:flow     # Re-run Pipeline Management flow only (quick refresh)
+```
+
+### Step-by-step demo flow
+
+**1. Create the before state**
+```bash
+npm run demo:before
+```
+In Salesforce, log in as **Jennifer Hynes** → **Sales → Pipeline Inspection** → filter **Close Date: This Quarter, Owner: Me**. Show that the pipeline is **empty** ($0, Agent Activity: None).
+
+**2. Restore the pipeline**
+```bash
+npm run demo:after
+```
+Refresh Pipeline Inspection. **This Quarter** now shows **10 opps** including Omega 128K with Tasks, Notes, and Agent Activity badges. Insights may take 2–5 minutes — refresh once more.
+
+- **Omega 128K** (Negotiation, end-of-month close, no Next Step) → shows **"Update Next Step?"**
+
+---
+
+## How It Works
+
+The agent runs an **observe → evaluate → act** loop:
+
+| Step | What happens |
+|------|-------------|
+| **Observe** | SOQL queries check pipeline count, Omega opps, upcoming events, and activity |
+| **Evaluate** | Results compared against thresholds — fails if any check is below minimum |
+| **Act** | Apex scripts fix what's broken, then Pipeline Management flow runs |
+
+### What gets fixed automatically (`npm start`)
+
+1. **Opportunities** — moves stale opps back to current month (Omega-first, no new records created)
+2. **Events** — creates upcoming calendar events if below threshold
+3. **Activity** — adds Tasks to opps with no recent activity
+4. **Notes** — adds Enhanced Notes to opps missing them
+5. **Pipeline Management flow** — always runs so Agent Activity badges are fresh
+
+---
 
 ## Setup
+
+### Prerequisites
+
+- **Node.js** 18+
+- **Salesforce CLI** (`sf`) installed
+- (Optional) Slack incoming webhook for notifications
+
+### ⚠️ Important: Jennifer Hynes User ID
+
+All Apex scripts are scoped to Jennifer Hynes (`005Wt000004WHt3IAG`) — the demo POV user for sdo-amer. If your SDO uses a different user:
+
+1. Update `demoOwnerId` in `src/config/orgs.json`
+2. Update the `demoOwnerId` constant at the top of each script in `scripts/`
 
 ### 1. Install dependencies
 
 ```bash
-cd demo-org-hygiene-agent
 npm install
 ```
 
-### 2. Authorize your SDO orgs
-
-For each demo org (AMER, EMEA, APAC):
+### 2. Authenticate your SDO org(s)
 
 ```bash
 sf org login web --alias sdo-amer --instance-url https://login.salesforce.com
-# Repeat for sdo-emea, sdo-apac (or your aliases)
+# Repeat for sdo-emea, sdo-apac if needed
 ```
 
-### 3. Configure org list and thresholds
+### 3. (Optional) Configure Slack notifications
 
-- **`src/config/orgs.json`** – set `alias` to match your `sf org list` aliases and set `region` (AMER, EMEA, APAC).
-- **`src/config/thresholds.json`** – `opportunities.minCurrentMonth`, `opportunities.minOmega`, `opportunities.omegaAccountPattern`, `events.minCount` / `minUpcomingDays`, `activity.minRecentDays`.
-
-### 4. (Optional) Slack
-
-Copy `.env.example` to `.env` and set:
+Copy `.env.example` to `.env` and add your webhook:
 
 ```bash
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
-## Usage
+---
+
+## Autonomous Scheduling (GitHub Actions)
+
+The repo already includes a workflow that runs every 3 days at 06:00 UTC. To enable it:
+
+### 1. Fork or clone the repo to your own GitHub account
+
+### 2. Get your Salesforce auth URL
 
 ```bash
-# Run checks and auto-remediate when below threshold (always runs Pipeline Management flow)
-npm start
-
-# Run checks only (no remediation)
-npm run check
-
-# Same as npm start (explicit remediate)
-npm run remediate
-
-# Demo commands
-npm run demo:before    # Stage the "before" — move Jennifer's current-quarter opps to previous quarter
-npm run demo:after     # Restore 10 opps + add activity/notes + run Pipeline Management flow
-npm run demo:flow      # Run Pipeline Management flow only (for a quick refresh)
-npm run demo           # Full reset end-to-end: demo:before → demo:after
+sf org display --target-org sdo-amer --verbose --json | grep sfdxAuthUrl
 ```
 
-- **Exit code:** `0` if all orgs pass, `1` if any fail (for CI).
+Copy the value — it looks like `force://...`.
 
-## Scheduling
+### 3. Add the secret to GitHub
 
-### Scheduled runs in GitHub
+In your repo: **Settings → Secrets and variables → Actions → New repository secret**
 
-The workflow runs **every 3 days** at 06:00 UTC: (1) `npm start` (check + remediate — opps, events, Tasks, Notes), (2) `RunPipelineManagementFlow.apex` so Agent Activity is refreshed for all current-quarter demo POV opps. The demo org stays ready for events, booth, and deal cycles.
+| Name | Value |
+|------|-------|
+| `SF_AUTH_URL` | The auth URL from step 2 |
+| `SLACK_WEBHOOK_URL` | (Optional) Your Slack webhook URL |
 
-1. **Create a GitHub repo** (if you don’t have one)  
-   On GitHub: **Repositories → New** (or “Create repository”). Name it e.g. `demo-org-hygiene-agent`.
+### 4. That's it
 
-2. **Push this project**  
-   From your machine, in the folder that contains the agent (either the `demo-org-hygiene-agent` folder alone or the whole “SDO Agentforce Sales” folder):
-   ```bash
-   git init
-   git add .
-   git commit -m "Add demo org hygiene agent"
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/demo-org-hygiene-agent.git
-   git push -u origin main
-   ```
-   - If the **repo root** is the `demo-org-hygiene-agent` folder, the workflow at `demo-org-hygiene-agent/.github/workflows/hygiene-check.yml` will run.
-   - If the **repo root** is the parent (“SDO Agentforce Sales”), use the workflow at the root: `.github/workflows/demo-org-hygiene.yml` (see below) so the job runs with `working-directory: demo-org-hygiene-agent`.
+- **Manual trigger:** Actions → Demo Org Hygiene Check → Run workflow
+- **Automatic:** Runs every 3 days at 06:00 UTC — no further setup needed
 
-3. **Add secret for Salesforce auth**  
-   In the repo: **Settings → Secrets and variables → Actions → New repository secret**.
-   - **Name:** `SF_AUTH_URL`
-   - **Value:** An auth URL for your SDO org (e.g. sdo-amer). To get one:
-     - Log in locally: `sf org login web --alias sdo-amer`
-     - Then run: `sf org display --target-org sdo-amer --verbose` and look for the URL in the output, or use the **Auth URL** from the org’s connected session (Salesforce docs: “auth URL” or “sfdx auth url” for CI).
-     - Alternatively create a **JWT** connected app and use `sf org login jwt` in the workflow; then you’d use secrets like `SF_CLIENT_ID`, `SF_JWT_KEY`, etc., instead of `SF_AUTH_URL`.
-   Without this secret, the workflow runs but the hygiene check will fail with “Auth failed” for that org.
+---
 
-4. **Optional: Slack**  
-   Add secret **`SLACK_WEBHOOK_URL`** (your Slack Incoming Webhook URL) so the run posts the report to Slack.
-
-5. **Run and schedule**  
-   - **Manual run:** **Actions → Demo Org Hygiene Check → Run workflow**.
-   - **Automatic:** The workflow runs **every 3 days at 06:00 UTC**; no extra setup.
-
-### GitHub Actions workflow summary
-
-- **Workflow:** `.github/workflows/hygiene-check.yml` (when the repo is the agent folder) or `.github/workflows/demo-org-hygiene.yml` (when the repo is the parent folder).
-- **Schedule:** Every 3 days at 06:00 UTC; also `workflow_dispatch` for manual runs.
-- **Secrets:** `SF_AUTH_URL` (required for CI auth), `SLACK_WEBHOOK_URL` (optional).
-
-### Local cron
+## All Commands
 
 ```bash
-# Every 3 days at 6 AM
-0 6 */3 * * cd /path/to/demo-org-hygiene-agent && npm run check
+npm start             # Check + auto-remediate (recommended for scheduler)
+npm run check         # Check only — no changes made
+npm run remediate     # Same as npm start
+
+npm run demo:before   # Stage broken state for demo
+npm run demo:after    # Restore full pipeline + activity + flow
+npm run demo:flow     # Run Pipeline Management flow only
+npm run demo          # Full reset: demo:before → demo:after
 ```
 
-## Auto-remediation
+Exit code `0` = all orgs pass, `1` = any org failed (CI-friendly).
 
-When an org is **below** the configured thresholds:
+---
 
-1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Restores to `minTotal=10` (buffer above the scheduler's 8-opp trigger). Priority: (1) reactivate any closed Omega opps → stage `Negotiation`, end-of-month close date so PM doesn't skip them; (2) move **all** stale Omega opps from any past date → close date = last day of month (PM "Update Next Step?" badge trigger); (3) fill remaining slots with any other stale open opps spread across the rest of the month; (4) reopen closed non-Omega from last 180 days → stage `Discovery` as last resort.
-2. **Events** – `scripts/EnsureUpcomingEvents.apex` creates Events in the next 14 days (Omega-themed subjects when possible).
-3. **Activity** – `scripts/EnsureOppActivity.apex` adds completed Tasks on open current-quarter opps (demo POV owner) that have no activity in the last 30 days.
-4. **Notes** – `scripts/EnsureOppNotes.apex` adds one Enhanced Note (Lightning Notes) per open current-quarter opp that doesn’t already have a recent note, so Pipeline Management has Notes + Tasks for insights.
+## Thresholds
 
-Remediation runs only when you use `npm start` (or `npm run remediate`). Use `npm run check` in CI to avoid creating data automatically.
+Thresholds live in `src/config/thresholds.json`. The agent triggers remediation when the org falls below these:
 
-## Demo setup (before showing the agent)
+| Threshold | Value | Notes |
+|-----------|-------|-------|
+| `minCurrentMonth` | 8 | Apex restores to 10 as a buffer |
+| `minOmega` | 2 | Minimum Omega opps in current quarter |
+| `requireAllCurrentQuarterForAgent` | true | All opps need activity, not just Omega |
 
-To show the agent "fixing" the org, create a messy state first (run against your SDO alias, e.g. `sdo-amer`):
+---
 
-```bash
-# Move Jennifer Hynes’s current-quarter open opps to previous quarter (stale pipeline)
-sf apex run --file scripts/DemoSetup_StalePipeline.apex --target-org sdo-amer
-```
+## Why Omega 128K Always Comes Back
 
-Then run the agent: `npm start`. The agent will move those opps back to the current month with Tasks, Notes, and Agent Activity.
+`DemoSetup_StalePipeline.apex` sorts Omega opps by **Amount DESC** before assigning stale dates, so the highest-value Omega opp (~$128K) always gets the latest stale date (Dec 31). `EnsureCurrentMonthOpportunities` queries Omega opps `ORDER BY CloseDate DESC`, so 128K is always first in the restore queue — no matter how many other Omega opps exist.
 
-**Why Omega 128K always comes back:** `DemoSetup_StalePipeline.apex` separates Omega and non-Omega opps, sorts Omega by **Amount DESC**, then assigns stale dates starting from the end of the previous quarter (Dec 31, Dec 30, Dec 29…). The highest-value Omega opp (128K at ~$128K) always gets the latest stale date. `EnsureCurrentMonthOpportunities` queries Omega opps `ORDER BY CloseDate DESC` so 128K is always first in the restore queue — regardless of how many other Omega opps exist.
+---
 
-**How the before state works:** `DemoSetup_StalePipeline.apex` moves all of Jennifer’s current-quarter open opps to the **previous quarter**. They still appear in Pipeline Inspection’s **Overdue** section (last 90 days), which is great for showing the audience "$10M+ of deals going stale." The **This Quarter** filter shows $0 — the full contrast for the after. Omega 128K stays open throughout; its `NextStep` is cleared so PM generates an "Update Next Step?" badge when it’s restored.
+## Pipeline Management Notes
 
-**Note:** Jennifer Hynes’s User Id is hardcoded in `DemoSetup_StalePipeline.apex` (`005Wt000004WHt3IAG`). If your SDO uses a different Id, edit that script.
+- **EAC and ECI must be enabled** for Agent Activity insights to appear
+- After `demo:after`, insights can take **2–5 minutes** to populate — refresh Pipeline Inspection once more
+- If Agent Activity shows "None" after the flow runs, re-run `npm start` to ensure Tasks and Notes exist, then wait and refresh
 
-### Scheduler stress-test (separate from the demo)
+**If you get a compile error on the flow:**
+Go to **Setup → Flows → SDO Process Field Updates Autolaunch** and check the API Name. Update `scripts/RunPipelineManagementFlow.apex` if it differs.
 
-`DemoSetup_CloseOmega128K.apex` simulates the real-world scenario where an SE or PMM accidentally closes the Omega 128K deal. This is **not** part of the before/after demo — it’s used to test that the **scheduled hygiene run** (every 3 days) correctly detects and reactivates a closed flagship opp. Run it on its own when you want to verify the auto-remediation path:
+---
+
+## Stress Test (Scheduler Verification)
+
+`DemoSetup_CloseOmega128K.apex` simulates an SE accidentally closing the Omega 128K deal. Use it to verify the autonomous scheduler catches and fixes it:
 
 ```bash
 sf apex run --file scripts/DemoSetup_CloseOmega128K.apex --target-org sdo-amer
-# Then either wait for the next scheduled run, or trigger manually:
-npm start
+npm start   # or wait for the next scheduled run
 ```
 
-### Live demo: commands to show in real time
+This is separate from the before/after demo — it tests the scheduler path, not the demo flow.
 
-Use the npm scripts below so the audience sees the **before** (empty pipeline) and **after** (full pipeline with Omega and Agent Activity). All commands assume you are in the project root (`demo-org-hygiene-agent`) and the org alias is `sdo-amer`.
+---
 
-**1. Create the before state**
+## Config Reference
 
-```bash
-npm run demo:before
-```
+| File | Purpose |
+|------|---------|
+| `src/config/orgs.json` | Org aliases, regions, and `demoOwnerId` per org |
+| `src/config/thresholds.json` | Pass/fail thresholds for opps, events, and activity |
+| `.env` | `SLACK_WEBHOOK_URL`, optional path overrides |
 
-Then in Salesforce, log in as **Jennifer Hynes** and open **Sales → Opportunities → My Pipeline** with **Close Date: This Quarter**, **Owner: Me**. Refresh. Show that the pipeline is **empty** (0 opps, Agent Activity None).
-
-**2. Restore the pipeline — opps + activity + Pipeline Management flow in one command**
-
-```bash
-npm run demo:after
-```
-
-Runs four Apex scripts in sequence — always, unconditionally:
-1. `EnsureCurrentMonthOpportunities.apex` — moves opps back to current month (Omega first)
-2. `EnsureOppActivity.apex` — adds Tasks to every current-quarter opp that needs them
-3. `EnsureOppNotes.apex` — adds Enhanced Notes to every current-quarter opp that needs them
-4. `RunPipelineManagementFlow.apex` — triggers Pipeline Management insights with fresh Tasks + Notes
-
-Refresh **Pipeline Inspection** (same filters). Show that **This Quarter** now has **10 opps** including all Omega opps (128K and others) with Tasks, Notes, and Agent Activity badges. Insights may take 2–5 minutes to appear — refresh once more after that. Omega 128K (Negotiation, end-of-month close date, no Next Step) will show **"Update Next Step?"** in the Agent Activity column.
-
-**Full automated reset (one command, no steps)**
-
-```bash
-npm run demo
-```
-
-Runs `demo:before` → `demo:after` end to end. Use this when you want to reset the org silently before the audience is watching, then open Pipeline Inspection to show the result.
-## Run Pipeline Management flow
-
-The **Pipeline Management** flow (same as clicking "Get Pipeline Management Insights") runs **automatically** on every `npm start` (so Agent Activity is always refreshed when you run the agent), and again in the GitHub Actions scheduled job every 3 days. It targets **all open current-quarter opportunities** for the demo POV user (e.g. Jennifer Hynes), so Agent Activity is populated for the same opps that have Tasks and Notes.
-
-To run it **manually** from the command line:
-
-1. **Prerequisites (required for Agent Activity insights):**
-   - **Einstein Activity Capture (EAC)** and **Einstein Conversation Insights (ECI)** must be enabled. Pipeline Management uses this data to generate insights; without them, the feature cannot work as designed.
-   - Pipeline Management must be set up (Agentforce Pipeline Management on, agent created, permission set assigned, flow active). See the Pipeline Management SDO demo guide for setup.
-
-2. **Data on opportunities:** The agent suggests next steps by analyzing **recent activity** on the opportunity (emails, calls, notes, tasks). The flow runs regardless, but **Agent Activity will stay "None"** for opps with no recent activity to analyze. The hygiene agent **checks and updates** this for you: it ensures every open opportunity in the **current quarter** (same scope as Pipeline Inspection "This Quarter") has at least one Task in the last 30 days. Run `npm start` or `npm run remediate` to add Tasks where missing; the check appears as "Current quarter (agent-ready): X/Y opps with recent activity" in the report.
-
-3. **Run the flow** (no button click):
-   ```bash
-   sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer
-   ```
-
-4. **Confirm the flow API name** if you get a compile error: In Setup go to **Flows**, open **SDO Process Field Updates Autolaunch**, and check the **API Name**. If it differs (e.g. a namespace prefix), update the class name in `scripts/RunPipelineManagementFlow.apex` to match (e.g. `Flow.Interview.YourActualApiName`).
-
-5. **Check results**: Go to **Opportunities > Pipeline Inspection**, filter by Close Date (e.g. This Quarter). In the **Agent Activity** column, look for **Need Review** or **Update Next Step!**; open an item to see the insight and Accept / Edit / Decline. Insights can take a few minutes to appear after the flow runs. **If only one or two opps show Agent Activity:** Pipeline Management generates insights from recent activity (Tasks, Notes, emails, calls). Run `npm start` again so the hygiene agent adds Tasks and Notes to current-quarter opps that don’t have them, then runs the flow again; wait a few minutes and refresh Pipeline Inspection for more insights to appear.
-
-## Config reference
-
-- **orgs.json** – `alias` (required), `region`, `description`, `demoOwnerId` (optional) — when set, all pipeline and activity checks and remediation scope to opportunities owned by this User Id (demo POV, e.g. Jennifer Hynes). Apex scripts use the same Id; if your SDO uses a different user, set `demoOwnerId` in orgs.json and update the `demoOwnerId` constant in each script under `scripts/`.
-- **thresholds.json** – `opportunities.minCurrentMonth` (8 — scheduler triggers if below this; Apex restores to 10 as a buffer), `opportunities.minOmega` (2), `opportunities.omegaAccountPattern`, `opportunities.reopenStageOmega` / `reopenStageOther`, `events.minUpcomingDays`, `events.minCount`, `activity.minRecentDays`, `activity.omegaOnly`, `activity.requireAllCurrentQuarterForAgent` (true — ensures EnsureOppActivity runs for all opps, not just the 2 Omega ones, so PM has activity data for full badge coverage)
-- **.env** – `SLACK_WEBHOOK_URL`, optional `ORG_CONFIG_PATH`, `THRESHOLDS_PATH`
+---
 
 ## License
 
