@@ -72,11 +72,11 @@ npm run check
 # Same as npm start (explicit remediate)
 npm run remediate
 
-# Demo: create before state, then fix, then optionally refresh flow
-npm run demo:before    # Move Jennifer's current-quarter opps to previous quarter (stale pipeline)
-npm run demo:fix       # npm start twice (remediate then verify)
-npm run demo:flow      # Run Pipeline Management flow only
-npm run demo           # Full reset: demo:before + demo:fix + demo:flow
+# Demo commands
+npm run demo:before    # Stage the "before" — move Jennifer's current-quarter opps to previous quarter
+npm run demo:after     # Restore 10 opps + add activity/notes + run Pipeline Management flow
+npm run demo:flow      # Run Pipeline Management flow only (for a quick refresh)
+npm run demo           # Full reset end-to-end: demo:before → demo:after
 ```
 
 - **Exit code:** `0` if all orgs pass, `1` if any fail (for CI).
@@ -136,7 +136,7 @@ The workflow runs **every 3 days** at 06:00 UTC: (1) `npm start` (check + remedi
 
 When an org is **below** the configured thresholds:
 
-1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Priority: (1) reactivate closed Omega opps (e.g. 128K) → stage `Negotiation`, (2) move stale open opps into current month — **previous-quarter** opps first (same set as demo script, including Omega 44k/128k), then other stale, (3) reopen closed non-Omega from last 120 days → stage `Qualification`.
+1. **Opportunities** – `scripts/EnsureCurrentMonthOpportunities.apex` **moves** existing opportunities (does not create). Restores to `minTotal=10` (buffer above the scheduler's 8-opp trigger). Priority: (1) reactivate any closed Omega opps → stage `Negotiation`, end-of-month close date so PM doesn't skip them; (2) move **all** stale Omega opps from any past date → close date = last day of month (PM "Update Next Step?" badge trigger); (3) fill remaining slots with any other stale open opps spread across the rest of the month; (4) reopen closed non-Omega from last 180 days → stage `Discovery` as last resort.
 2. **Events** – `scripts/EnsureUpcomingEvents.apex` creates Events in the next 14 days (Omega-themed subjects when possible).
 3. **Activity** – `scripts/EnsureOppActivity.apex` adds completed Tasks on open current-quarter opps (demo POV owner) that have no activity in the last 30 days.
 4. **Notes** – `scripts/EnsureOppNotes.apex` adds one Enhanced Note (Lightning Notes) per open current-quarter opp that doesn’t already have a recent note, so Pipeline Management has Notes + Tasks for insights.
@@ -154,9 +154,9 @@ sf apex run --file scripts/DemoSetup_StalePipeline.apex --target-org sdo-amer
 
 Then run the agent: `npm start`. The agent will move those opps back to the current month with Tasks, Notes, and Agent Activity.
 
-**Why the right opps come back:** Remediation (1) reactivates closed Omega opps first, then (2) moves **previous-quarter** stale open opps into the current month (the same set moved by `DemoSetup_StalePipeline`, including Omega 44k/128k and other strong demo opps), then (3) other stale or closed opps if still under threshold. Checks use the same UTC month/quarter as Apex so pass/fail matches what you see in Pipeline Inspection.
+**Why Omega 128K always comes back:** `DemoSetup_StalePipeline.apex` separates Omega and non-Omega opps, sorts Omega by **Amount DESC**, then assigns stale dates starting from the end of the previous quarter (Dec 31, Dec 30, Dec 29…). The highest-value Omega opp (128K at ~$128K) always gets the latest stale date. `EnsureCurrentMonthOpportunities` queries Omega opps `ORDER BY CloseDate DESC` so 128K is always first in the restore queue — regardless of how many other Omega opps exist.
 
-**How the before state works:** `DemoSetup_StalePipeline.apex` moves all of Jennifer’s current-quarter open opps to the previous quarter. They no longer appear when you filter Pipeline Inspection by **Close Date: This Quarter**. Omega 128K stays open — no manual delete needed.
+**How the before state works:** `DemoSetup_StalePipeline.apex` moves all of Jennifer’s current-quarter open opps to the **previous quarter**. They still appear in Pipeline Inspection’s **Overdue** section (last 90 days), which is great for showing the audience "$10M+ of deals going stale." The **This Quarter** filter shows $0 — the full contrast for the after. Omega 128K stays open throughout; its `NextStep` is cleared so PM generates an "Update Next Step?" badge when it’s restored.
 
 **Note:** Jennifer Hynes’s User Id is hardcoded in `DemoSetup_StalePipeline.apex` (`005Wt000004WHt3IAG`). If your SDO uses a different Id, edit that script.
 
@@ -194,7 +194,7 @@ Runs four Apex scripts in sequence — always, unconditionally:
 3. `EnsureOppNotes.apex` — adds Enhanced Notes to every current-quarter opp that needs them
 4. `RunPipelineManagementFlow.apex` — triggers Pipeline Management insights with fresh Tasks + Notes
 
-Refresh **Pipeline Inspection** (same filters). Show that **This Quarter** now has 8+ opps including Omega (44k and 128k) with Tasks, Notes, and Agent Activity badges. Insights may take 2–5 minutes to appear — refresh once more after that.
+Refresh **Pipeline Inspection** (same filters). Show that **This Quarter** now has **10 opps** including all Omega opps (128K and others) with Tasks, Notes, and Agent Activity badges. Insights may take 2–5 minutes to appear — refresh once more after that. Omega 128K (Negotiation, end-of-month close date, no Next Step) will show **"Update Next Step?"** in the Agent Activity column.
 
 **Full automated reset (one command, no steps)**
 
@@ -227,7 +227,7 @@ To run it **manually** from the command line:
 ## Config reference
 
 - **orgs.json** – `alias` (required), `region`, `description`, `demoOwnerId` (optional) — when set, all pipeline and activity checks and remediation scope to opportunities owned by this User Id (demo POV, e.g. Jennifer Hynes). Apex scripts use the same Id; if your SDO uses a different user, set `demoOwnerId` in orgs.json and update the `demoOwnerId` constant in each script under `scripts/`.
-- **thresholds.json** – `opportunities.minCurrentMonth`, `opportunities.minOmega`, `opportunities.omegaAccountPattern`, `opportunities.reopenStageOmega` / `reopenStageOther`, `events.minUpcomingDays`, `events.minCount`, `activity.minRecentDays`, `activity.omegaOnly`
+- **thresholds.json** – `opportunities.minCurrentMonth` (8 — scheduler triggers if below this; Apex restores to 10 as a buffer), `opportunities.minOmega` (2), `opportunities.omegaAccountPattern`, `opportunities.reopenStageOmega` / `reopenStageOther`, `events.minUpcomingDays`, `events.minCount`, `activity.minRecentDays`, `activity.omegaOnly`, `activity.requireAllCurrentQuarterForAgent` (true — ensures EnsureOppActivity runs for all opps, not just the 2 Omega ones, so PM has activity data for full badge coverage)
 - **.env** – `SLACK_WEBHOOK_URL`, optional `ORG_CONFIG_PATH`, `THRESHOLDS_PATH`
 
 ## License
