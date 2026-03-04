@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
+    "setup": "node scripts/setup.js",
     "start": "node src/index.js",
     "check": "node src/index.js --no-remediate",
     "remediate": "node src/index.js --remediate",
@@ -14,7 +15,13 @@
     "demo": "npm run demo:before && npm run demo:after",
     "test": "node --test src/**/*.test.js"
   },
-  "keywords": ["salesforce", "sdo", "demo", "hygiene", "automation"],
+  "keywords": [
+    "salesforce",
+    "sdo",
+    "demo",
+    "hygiene",
+    "automation"
+  ],
   "author": "",
   "license": "MIT",
   "engines": {

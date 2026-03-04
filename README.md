@@ -17,11 +17,14 @@ npm install
 # 2. Authenticate to your SDO
 sf org login web --alias sdo-amer --instance-url https://login.salesforce.com
 
-# 3. Run the agent
+# 3. Configure for your org (picks your demo POV user, sets org alias)
+npm run setup
+
+# 4. Run the agent
 npm start
 ```
 
-That's it. The agent checks the org, reports what it found, and fixes anything below threshold.
+`npm run setup` connects to your org, lists active users, and lets you pick your demo POV user — no manual file editing needed. Run it once and you're configured.
 
 ---
 

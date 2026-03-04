@@ -3,9 +3,9 @@
     {
       "alias": "sdo-amer",
       "region": "AMER",
-      "description": "Americas demo org for events",
+      "description": "Demo org configured via setup",
       "demoOwnerId": "005Wt000004WHt3IAG"
     }
   ],
-  "_comment": "demoOwnerId = User Id for demo POV (e.g. Jennifer Hynes). All pipeline/activity checks and remediation scope to this owner. Add sdo-emea, sdo-apac when ready."
+  "_comment": "demoOwnerId = User Id for demo POV. All pipeline/activity checks and remediation scope to this owner. Run npm run setup to reconfigure."
 }
