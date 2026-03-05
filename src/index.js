@@ -42,6 +42,7 @@ async function main() {
   }
 
   const results = [];
+  const remResults = []; // Remediation result per org (null if not run)
 
   for (const org of orgConfig) {
     const alias = org.alias;
@@ -53,6 +54,7 @@ async function main() {
         failures: [`Auth failed: ${auth.error}`],
         details: {},
       });
+      remResults.push(null);
       continue;
     }
 
@@ -61,23 +63,31 @@ async function main() {
     evalResult._thresholds = thresholds;
     results.push(evalResult);
 
+    let rem = null;
     if (doRemediate && !evalResult.pass) {
-      const rem = await remediate(alias, evalResult);
+      rem = await remediate(alias, evalResult);
       if (rem.errors.length) {
         evalResult.failures.push(`Remediation: ${rem.errors.join('; ')}`);
       } else if (rem.opportunitiesCreated || rem.eventsCreated || rem.activityCreated || rem.notesCreated || rem.flowStarted) {
         evalResult.failures.push('Remediation ran; re-run check to verify.');
       }
     }
+    remResults.push(rem);
   }
 
   const orgList = orgConfig;
   reportConsole(results, orgList);
 
   const webhook = process.env.SLACK_WEBHOOK_URL;
+  const runType = noRemediate ? 'check-only' : 'auto-remediate';
+
   if (webhook) {
-    const slackResult = await reportSlack(results, webhook, orgList);
-    if (!slackResult.ok) console.error('Slack report failed:', slackResult.error);
+    const slackResult = await reportSlack(results, webhook, orgList, remResults, runType);
+    if (!slackResult.ok) {
+      console.error('Slack report failed:', slackResult.error);
+    } else {
+      console.log('✓ Slack report sent.');
+    }
   }
 
   const anyFailed = results.some((r) => !r.pass);

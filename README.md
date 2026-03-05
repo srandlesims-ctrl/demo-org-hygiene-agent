@@ -105,13 +105,23 @@ sf org login web --alias sdo-amer --instance-url https://login.salesforce.com
 # Repeat for sdo-emea, sdo-apac if needed
 ```
 
-### 3. (Optional) Configure Slack notifications
+### 3. (Optional) Slack health reports
 
-Copy `.env.example` to `.env` and add your webhook:
+Every run sends a rich Block Kit report to Slack — org metrics, what passed/failed, and exactly what was auto-fixed. Works as a DM or channel post.
+
+**To get reports as a DM:**
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → From scratch
+2. **Incoming Webhooks** → Activate Incoming Webhooks
+3. **Add New Webhook to Workspace** → choose **Direct Messages → [Your Name]**
+4. Copy the webhook URL
+
+Copy `.env.example` to `.env` and paste it in:
 
 ```bash
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
+
+> **GitHub Actions:** Add `SLACK_WEBHOOK_URL` as a repo secret (Settings → Secrets and variables → Actions) and the scheduled run will DM you automatically.
 
 ---
 
