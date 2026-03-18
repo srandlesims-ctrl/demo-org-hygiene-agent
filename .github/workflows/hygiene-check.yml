@@ -13,6 +13,8 @@ on:
 jobs:
   hygiene:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to commit docs/index.html back to main
     steps:
       - uses: actions/checkout@v4
 
@@ -50,3 +52,14 @@ jobs:
       - name: Run Pipeline Management flow
         run: sf apex run --file scripts/RunPipelineManagementFlow.apex --target-org sdo-amer
         continue-on-error: true
+
+      - name: Generate dashboard
+        run: node scripts/generate-dashboard.js
+
+      - name: Commit and push dashboard
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          git diff --cached --quiet || git commit -m "chore: update hygiene dashboard [skip ci]"
+          git push

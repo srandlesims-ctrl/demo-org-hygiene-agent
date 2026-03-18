@@ -4,7 +4,7 @@
  * Runs hygiene checks across configured SDO orgs, evaluates pass/fail, reports to console + Slack, optionally remediates.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -91,6 +91,19 @@ async function main() {
   }
 
   const anyFailed = results.some((r) => !r.pass);
+
+  // Persist run data so generate-dashboard.js can build docs/index.html.
+  try {
+    const dataDir = join(__dirname, '..', 'data');
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(
+      join(dataDir, 'last-run.json'),
+      JSON.stringify({ generatedAt: new Date().toISOString(), runType, results, remResults, orgConfig: orgList }, null, 2)
+    );
+  } catch (e) {
+    console.error('Could not write last-run.json:', e.message);
+  }
+
   process.exit(anyFailed ? 1 : 0);
 }
 
