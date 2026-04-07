@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Demo Org Hygiene ✗</title>
+<title>Demo Org Hygiene ✓</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -155,17 +155,17 @@
 
 <div class="page-header">
   <h1>
-    <span class="status-dot dot-fail"></span>
+    <span class="status-dot dot-pass"></span>
     Demo Org Hygiene
   </h1>
   <div class="summary-row">
+    <span class="tag tag-pass">1 passing</span>
     
-    <span class="tag tag-fail">1 failing</span>
     <span class="tag tag-muted">auto-remediate</span>
   </div>
   <div class="meta">
-    <span>Last run: Sat, 04 Apr 2026 06:53:20 UTC</span>
-    <span>Est. next run: Tue, 07 Apr 2026 06:53:20 UTC</span>
+    <span>Last run: Tue, 07 Apr 2026 07:07:39 UTC</span>
+    <span>Est. next run: Fri, 10 Apr 2026 07:07:39 UTC</span>
   </div>
   <a class="run-btn" href="https://github.com/srandlesims-ctrl/demo-org-hygiene-agent/actions/workflows/hygiene-check.yml" target="_blank" rel="noopener">
     &#9654; Run now (GitHub Actions)
@@ -174,13 +174,13 @@
 
 <div class="cards">
   
-    <div class="card card-fail">
+    <div class="card card-pass">
       <div class="card-header">
         <div class="card-title">
           <span class="org-alias">sdo-amer</span>
           <span class="org-region">AMER</span>
         </div>
-        <span class="badge badge-fail">FAIL</span>
+        <span class="badge badge-pass">PASS</span>
       </div>
       <div class="metrics-grid">
         
@@ -208,41 +208,33 @@
             <div class="metric-threshold">Must be open</div>
           </div>
         </div>
-        <div class="metric metric-fail">
-          <div class="metric-icon">✗</div>
+        <div class="metric metric-pass">
+          <div class="metric-icon">✓</div>
           <div class="metric-body">
             <div class="metric-label">Events (next 14d)</div>
-            <div class="metric-value">2</div>
+            <div class="metric-value">5</div>
             <div class="metric-threshold">≥5 required</div>
           </div>
         </div>
-        <div class="metric metric-fail">
-          <div class="metric-icon">✗</div>
+        <div class="metric metric-pass">
+          <div class="metric-icon">✓</div>
           <div class="metric-body">
             <div class="metric-label">Omega activity</div>
-            <div class="metric-value">Stale</div>
+            <div class="metric-value">All active</div>
             <div class="metric-threshold">Last 30 days</div>
           </div>
         </div>
-        <div class="metric metric-fail">
-          <div class="metric-icon">✗</div>
+        <div class="metric metric-pass">
+          <div class="metric-icon">✓</div>
           <div class="metric-body">
             <div class="metric-label">Agent-ready (qtr)</div>
-            <div class="metric-value">20/22 opps</div>
+            <div class="metric-value">22/22 opps</div>
             <div class="metric-threshold">All need activity</div>
           </div>
         </div>
       </div>
       
-      <div class="failures">
-        <strong>What failed:</strong>
-        <ul><li>Events (upcoming 14 days): 2 &lt; 5 required</li><li>Some open Omega opps have no recent activity (last 30 days)</li><li>Pipeline Management Agent Activity: 20/22 open current-quarter opps have recent activity (all need activity for insights)</li></ul>
-      </div>
       
-      <div class="rem-ok">
-        <strong>Auto-fixed:</strong>
-        <ul><li>Added upcoming events</li><li>Added activity to Omega opps</li><li>Added notes to opps</li><li>Refreshed Pipeline Management flow</li></ul>
-      </div>
     </div>
 </div>
 
