@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Demo Org Hygiene ✓</title>
+<title>Demo Org Hygiene ✗</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -155,17 +155,17 @@
 
 <div class="page-header">
   <h1>
-    <span class="status-dot dot-pass"></span>
+    <span class="status-dot dot-fail"></span>
     Demo Org Hygiene
   </h1>
   <div class="summary-row">
-    <span class="tag tag-pass">1 passing</span>
     
+    <span class="tag tag-fail">1 failing</span>
     <span class="tag tag-muted">auto-remediate</span>
   </div>
   <div class="meta">
-    <span>Last run: Tue, 07 Apr 2026 07:07:39 UTC</span>
-    <span>Est. next run: Fri, 10 Apr 2026 07:07:39 UTC</span>
+    <span>Last run: Fri, 10 Apr 2026 07:19:39 UTC</span>
+    <span>Est. next run: Mon, 13 Apr 2026 07:19:39 UTC</span>
   </div>
   <a class="run-btn" href="https://github.com/srandlesims-ctrl/demo-org-hygiene-agent/actions/workflows/hygiene-check.yml" target="_blank" rel="noopener">
     &#9654; Run now (GitHub Actions)
@@ -174,13 +174,13 @@
 
 <div class="cards">
   
-    <div class="card card-pass">
+    <div class="card card-fail">
       <div class="card-header">
         <div class="card-title">
           <span class="org-alias">sdo-amer</span>
           <span class="org-region">AMER</span>
         </div>
-        <span class="badge badge-pass">PASS</span>
+        <span class="badge badge-fail">FAIL</span>
       </div>
       <div class="metrics-grid">
         
@@ -208,11 +208,11 @@
             <div class="metric-threshold">Must be open</div>
           </div>
         </div>
-        <div class="metric metric-pass">
-          <div class="metric-icon">✓</div>
+        <div class="metric metric-fail">
+          <div class="metric-icon">✗</div>
           <div class="metric-body">
             <div class="metric-label">Events (next 14d)</div>
-            <div class="metric-value">5</div>
+            <div class="metric-value">0</div>
             <div class="metric-threshold">≥5 required</div>
           </div>
         </div>
@@ -234,7 +234,15 @@
         </div>
       </div>
       
+      <div class="failures">
+        <strong>What failed:</strong>
+        <ul><li>Events (upcoming 14 days): 0 &lt; 5 required</li></ul>
+      </div>
       
+      <div class="rem-ok">
+        <strong>Auto-fixed:</strong>
+        <ul><li>Added upcoming events</li><li>Refreshed Pipeline Management flow</li></ul>
+      </div>
     </div>
 </div>
 
