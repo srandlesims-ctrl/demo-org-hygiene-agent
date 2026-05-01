@@ -164,8 +164,8 @@
     <span class="tag tag-muted">auto-remediate</span>
   </div>
   <div class="meta">
-    <span>Last run: Tue, 28 Apr 2026 08:13:17 UTC</span>
-    <span>Est. next run: Fri, 01 May 2026 08:13:17 UTC</span>
+    <span>Last run: Fri, 01 May 2026 08:06:13 UTC</span>
+    <span>Est. next run: Mon, 04 May 2026 08:06:13 UTC</span>
   </div>
   <a class="run-btn" href="https://github.com/srandlesims-ctrl/demo-org-hygiene-agent/actions/workflows/hygiene-check.yml" target="_blank" rel="noopener">
     &#9654; Run now (GitHub Actions)
@@ -184,27 +184,27 @@
       </div>
       <div class="metrics-grid">
         
-        <div class="metric metric-pass">
-          <div class="metric-icon">✓</div>
+        <div class="metric metric-fail">
+          <div class="metric-icon">✗</div>
           <div class="metric-body">
             <div class="metric-label">Pipeline (month)</div>
-            <div class="metric-value">10 opps</div>
+            <div class="metric-value">7 opps</div>
             <div class="metric-threshold">≥8 required</div>
           </div>
         </div>
-        <div class="metric metric-pass">
-          <div class="metric-icon">✓</div>
+        <div class="metric metric-fail">
+          <div class="metric-icon">✗</div>
           <div class="metric-body">
             <div class="metric-label">Omega opps</div>
-            <div class="metric-value">2</div>
+            <div class="metric-value">0</div>
             <div class="metric-threshold">≥2 required</div>
           </div>
         </div>
-        <div class="metric metric-pass">
-          <div class="metric-icon">✓</div>
+        <div class="metric metric-fail">
+          <div class="metric-icon">✗</div>
           <div class="metric-body">
             <div class="metric-label">Omega flagship</div>
-            <div class="metric-value">Present</div>
+            <div class="metric-value">Missing</div>
             <div class="metric-threshold">Must be open</div>
           </div>
         </div>
@@ -212,15 +212,15 @@
           <div class="metric-icon">✗</div>
           <div class="metric-body">
             <div class="metric-label">Events (next 14d)</div>
-            <div class="metric-value">0</div>
+            <div class="metric-value">3</div>
             <div class="metric-threshold">≥5 required</div>
           </div>
         </div>
-        <div class="metric metric-pass">
-          <div class="metric-icon">✓</div>
+        <div class="metric metric-fail">
+          <div class="metric-icon">✗</div>
           <div class="metric-body">
             <div class="metric-label">Omega activity</div>
-            <div class="metric-value">All active</div>
+            <div class="metric-value">Stale</div>
             <div class="metric-threshold">Last 30 days</div>
           </div>
         </div>
@@ -228,7 +228,7 @@
           <div class="metric-icon">✓</div>
           <div class="metric-body">
             <div class="metric-label">Agent-ready (qtr)</div>
-            <div class="metric-value">22/22 opps</div>
+            <div class="metric-value">21/21 opps</div>
             <div class="metric-threshold">All need activity</div>
           </div>
         </div>
@@ -236,12 +236,12 @@
       
       <div class="failures">
         <strong>What failed:</strong>
-        <ul><li>Events (upcoming 14 days): 0 &lt; 5 required</li></ul>
+        <ul><li>Opportunities (current month): 7 &lt; 8 required</li><li>Omega opps (current month): 0 &lt; 2 required</li><li>Omega flagship opp (&quot;Omega, Inc. - New Business&quot;) not open in current month</li><li>Events (upcoming 14 days): 3 &lt; 5 required</li><li>Some open Omega opps have no recent activity (last 30 days)</li></ul>
       </div>
       
       <div class="rem-ok">
         <strong>Auto-fixed:</strong>
-        <ul><li>Added upcoming events</li><li>Refreshed Pipeline Management flow</li></ul>
+        <ul><li>Moved opps to current month</li><li>Added upcoming events</li><li>Added activity to Omega opps</li><li>Added notes to opps</li><li>Refreshed Pipeline Management flow</li></ul>
       </div>
     </div>
 </div>
